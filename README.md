@@ -1,2 +1,145 @@
+<div align="center">
+
 # axgf-lib
-Official reference library for the Axiom Genealogy Format (AXGF). Create, validate, edit, and convert genealogy bundles. Stateless, multi-platform core (web/WASM, desktop, mobile). Apache-2.0.
+
+**Official reference library for the [Axiom Genealogy Format (AXGF)](https://github.com/plkarin/axgf-spec)**
+
+[![Crate](https://img.shields.io/badge/crate-axgf--rs-667eea?style=flat-square)](https://github.com/plkarin/axgf-lib)
+[![License](https://img.shields.io/badge/license-Apache--2.0-43d9a2?style=flat-square)](./LICENSE)
+[![Spec](https://img.shields.io/badge/spec-AXGF_1.0-764ba2?style=flat-square)](https://github.com/plkarin/axgf-spec)
+[![Status](https://img.shields.io/badge/status-alpha-ffd93d?style=flat-square)](https://github.com/plkarin/axgf-lib/issues)
+
+*One core. Every platform. The single point of contact for reading, writing, validating, and converting AXGF bundles — so no application ever re-implements the format.*
+
+[Specification →](https://github.com/plkarin/axgf-spec) · [API contract →](#api-contract) · [Bindings →](#platform-bindings) · [Issues →](https://github.com/plkarin/axgf-lib/issues)
+
+</div>
+
+---
+
+## What this is
+
+`axgf-lib` is the reference implementation of the AXGF standard, written in Rust and compiled to run everywhere: in the browser (WebAssembly), on desktop clients (native library / Tauri), on mobile (Android & iOS via UniFFI), and from any language over a C ABI.
+
+Applications — SaaS backends, desktop apps, CLIs — call this library to manipulate genealogy data. They never parse, validate, or merge AXGF themselves. Axiom provides the specification and this library; clients build their own products on top.
+
+The crate is published as **`axgf-rs`**.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Your application (web SaaS · desktop · mobile · CLI)     │
+│  renders, persists, and exposes genealogy data           │
+└───────────────────────────┬──────────────────────────────┘
+                            │ calls
+┌───────────────────────────▼──────────────────────────────┐
+│  axgf-lib  (crate: axgf-rs)                               │
+│  create · import · export · validate · CRUD · convert     │
+│  one stateless core → WASM · native · mobile · C-FFI      │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Design contract
+
+The library's behavior is fixed by five rules. They exist so that a single core can serve every platform without duplicating logic, and so that clients get identical, predictable behavior everywhere.
+
+**Stateless and immutable.** Every operation takes a bundle in and returns a new bundle out. The library keeps nothing between calls. No sessions, no handles, no hidden mutation. This makes behavior reproducible and bindings trivial.
+
+**Data-oriented boundary.** Callers exchange JSON and receive a uniform envelope. No native Rust objects cross the boundary, so bindings to JavaScript, Kotlin, Swift, or C stay mechanical. The caller manipulates plain data it already understands, in its own language.
+
+**Flat JSON is the working form.** The on-disk `.axgf` is a ZIP archive (one file per entity, plus embedded documents). The library converts it to a single flat JSON object for editing. The ZIP is produced only at export and parsed only at import — every operation in between is a fast JSON manipulation.
+
+**No disk, no graph traversal, no rendering.** The library produces and validates correct bundles. Reading rich views, walking the family graph, persisting to a database, and rendering to HTML are the client's responsibility, not the library's.
+
+**Explicit spec-version gating.** Every operation checks the bundle's declared AXGF version and refuses unknown versions with a stable diagnostic rather than misbehaving. A library built for AXGF 1.0 will never silently corrupt a 2.0 bundle.
+
+---
+
+## API contract
+
+Every function returns the same **envelope** shape, so success, produced data, and diagnostics are inspected identically in any language:
+
+```json
+{
+  "status": "ok",
+  "data": { "...": "the flat bundle, a manifest summary, or ZIP bytes" },
+  "diagnostics": [
+    { "code": "DANGLING_REFERENCE", "severity": "warning",
+      "message": "...", "entity_ref": "<uuid>" }
+  ]
+}
+```
+
+Diagnostic **codes** are part of the public contract and never change meaning across versions; human-readable messages may. An operation can succeed *with warnings* — validation is non-blocking, mirroring the format's own confidence model.
+
+### Operations (V1)
+
+| Group | Function | Purpose |
+|---|---|---|
+| **Lifecycle** | `create_bundle` | New empty bundle stamped with the current spec version |
+| | `import_bundle` | `.axgf` ZIP bytes → flat JSON (the only ZIP reader) |
+| | `export_bundle` | flat JSON → `.axgf` ZIP bytes (the only ZIP writer) |
+| | `inspect` | Read manifest + stats without materializing every entity |
+| **Validation** | `validate` | JSON Schema + semantic checks (dangling refs, cycles, chronology) |
+| **CRUD** | `add_entity` | Insert a person/family/event/link/source/place/document |
+| | `update_entity` | Replace an entity by id |
+| | `delete_entity` | Remove by id under an explicit referential-integrity policy |
+| **Cleanup** | `deduplicate` | Safely merge duplicates; flag ambiguous cases for review |
+| **Conversion** | `convert_gedcom` | GEDCOM 5.5.1 bytes → flat AXGF bundle |
+
+Deliberately **not** in V1: graph traversal, a query engine, sessions, disk access, and rendering. Those belong to the client, or to a later version.
+
+---
+
+## Platform bindings
+
+The same core is exposed to every target through thin, logic-free adapters, selected by Cargo feature:
+
+| Target | Feature | Mechanism |
+|---|---|---|
+| Rust | *(default)* | native crate |
+| Web / Node / Tauri webview | `wasm` | WebAssembly via `wasm-bindgen` |
+| Desktop / other languages | `cffi` | C ABI |
+| Android / iOS | `mobile` | Kotlin & Swift via UniFFI |
+
+```toml
+[dependencies]
+axgf-rs = { version = "0.1", features = ["wasm"] }
+```
+
+---
+
+## Status
+
+**Alpha.** The API surface and the design contract are settled; implementation is in progress. Expect breaking changes before `1.0.0`. Track progress and open questions in [Issues](https://github.com/plkarin/axgf-lib/issues).
+
+---
+
+## Relationship to the specification
+
+This library implements the format defined in **[plkarin/axgf-spec](https://github.com/plkarin/axgf-spec)**. The specification and its JSON Schema are the authority; where this library and the spec disagree, the spec wins and the library is the bug.
+
+- **Specification** — the AXGF standard (CC0, public domain)
+- **This library** — the reference implementation (Apache-2.0)
+
+---
+
+## License
+
+Licensed under the **Apache License, Version 2.0**. See [LICENSE](./LICENSE).
+
+Apache-2.0 is chosen over MIT for its explicit patent grant, which protects adopters — important for a component meant to be embedded widely, including in commercial software. The library stays free and open in perpetuity while remaining usable by everyone, which is what a standard needs to spread.
+
+```
+SPDX-License-Identifier: Apache-2.0
+```
+
+---
+
+<div align="center">
+
+**axgf-lib** · reference implementation of the Axiom Genealogy Format
+*crate: `axgf-rs` · spec: [plkarin/axgf-spec](https://github.com/plkarin/axgf-spec)*
+
+</div>
