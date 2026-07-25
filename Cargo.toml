@@ -1,0 +1,44 @@
+[package]
+name = "axgf-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Reference implementation of the Axiom Genealogy Format (AXGF) 1.0."
+license = "Apache-2.0"
+repository = "https://github.com/plkarin/axgf-lib"
+homepage = "https://github.com/plkarin/axgf-lib"
+documentation = "https://docs.rs/axgf-rs"
+readme = "README.md"
+keywords = ["axgf", "genealogy", "gedcom", "family-tree"]
+categories = ["data-structures", "parser-implementations"]
+
+[lib]
+name = "axgf_rs"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["gedcom"]
+gedcom  = []
+wasm    = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
+cffi    = []
+mobile  = ["dep:uniffi"]
+
+[dependencies]
+serde       = { version = "1.0", features = ["derive"] }
+serde_json  = { version = "1.0", features = ["preserve_order"] }
+zip         = { version = "0.6", default-features = false, features = ["deflate"] }
+jsonschema  = { version = "0.17", default-features = false }
+uuid        = { version = "1.6", features = ["v4", "serde"] }
+thiserror   = "1.0"
+base64      = "0.21"
+
+wasm-bindgen        = { version = "0.2", optional = true }
+serde-wasm-bindgen  = { version = "0.6", optional = true }
+uniffi              = { version = "0.25", optional = true }
+
+[dev-dependencies]
+serde_json = { version = "1.0", features = ["preserve_order"] }
+
+[profile.release]
+lto           = "thin"
+codegen-units = 1
