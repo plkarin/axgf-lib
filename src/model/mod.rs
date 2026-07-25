@@ -16,6 +16,7 @@
 //!
 //! Filled in during Phase 2.
 
+pub mod common;
 pub mod document;
 pub mod event;
 pub mod family;
