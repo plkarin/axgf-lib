@@ -25,6 +25,7 @@
 //!
 //! Filled in during Phase 1.
 
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 
 /// Overall status of an operation. `Ok` may co-exist with `warning` or
@@ -101,6 +102,37 @@ impl DiagnosticCode {
             DiagnosticCode::Internal                 => "INTERNAL",
         }
     }
+
+    /// Parse a wire-form string back into a [`DiagnosticCode`]. Returns
+    /// `None` for unrecognized codes (this keeps forward-compatibility:
+    /// consumers on an older library reading a newer library's envelope
+    /// can inspect the raw string and treat unknown codes as generic
+    /// errors without crashing).
+    pub fn from_wire(s: &str) -> Option<Self> {
+        use DiagnosticCode::*;
+        Some(match s {
+            "UNSUPPORTED_SPEC_VERSION"    => UnsupportedSpecVersion,
+            "INVALID_JSON"                => InvalidJson,
+            "INVALID_BUNDLE_STRUCTURE"    => InvalidBundleStructure,
+            "SCHEMA_VALIDATION_FAILED"    => SchemaValidationFailed,
+            "DANGLING_REFERENCE"          => DanglingReference,
+            "DUPLICATE_ENTITY_ID"         => DuplicateEntityId,
+            "DUPLICATE_UNIQUE_REF"        => DuplicateUniqueRef,
+            "CYCLE_DETECTED"              => CycleDetected,
+            "CHRONOLOGY_CONFLICT"         => ChronologyConflict,
+            "ENTITY_NOT_FOUND"            => EntityNotFound,
+            "ENTITY_ALREADY_EXISTS"       => EntityAlreadyExists,
+            "UNKNOWN_ENTITY_KIND"         => UnknownEntityKind,
+            "DELETE_BLOCKED_BY_REFERENCE" => DeleteBlockedByReference,
+            "MANUAL_REVIEW_REQUIRED"      => ManualReviewRequired,
+            "ZIP_READ_ERROR"              => ZipReadError,
+            "ZIP_WRITE_ERROR"             => ZipWriteError,
+            "GEDCOM_PARSE_ERROR"          => GedcomParseError,
+            "GEDCOM_UNRECOGNIZED_TAG"     => GedcomUnrecognizedTag,
+            "INTERNAL"                    => Internal,
+            _ => return None,
+        })
+    }
 }
 
 impl Serialize for DiagnosticCode {
@@ -109,8 +141,17 @@ impl Serialize for DiagnosticCode {
     }
 }
 
+impl<'de> Deserialize<'de> for DiagnosticCode {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        DiagnosticCode::from_wire(&raw).ok_or_else(|| {
+            de::Error::custom(format!("unknown diagnostic code: {raw}"))
+        })
+    }
+}
+
 /// A single diagnostic returned inside an [`Envelope`].
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diagnostic {
     /// Stable machine-readable code.
     pub code: DiagnosticCode,
@@ -120,18 +161,20 @@ pub struct Diagnostic {
     pub message: String,
     /// Optional pointer to a specific entity in the bundle, formatted as
     /// `"{kind}/{uuid}"` (for example `"persons/550e8400-…"`).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entity_ref: Option<String>,
 }
 
 /// The uniform response returned by every public function.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Envelope {
     /// Overall status of the call.
     pub status: Status,
     /// Operation payload. Convention: `null` when `status` is `Error`.
+    #[serde(default)]
     pub data: serde_json::Value,
     /// Ordered list of diagnostics; MAY be empty.
+    #[serde(default)]
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -177,5 +220,101 @@ impl Envelope {
                 e.to_string().replace('"', "'")
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn ok_envelope_has_ok_status_and_no_diagnostics() {
+        let env = Envelope::ok(json!({"hello": "world"}));
+        assert_eq!(env.status, Status::Ok);
+        assert!(env.diagnostics.is_empty());
+        assert_eq!(env.data, json!({"hello": "world"}));
+    }
+
+    #[test]
+    fn error_envelope_has_null_data_and_one_diagnostic() {
+        let env = Envelope::error(DiagnosticCode::InvalidJson, "not JSON");
+        assert_eq!(env.status, Status::Error);
+        assert!(env.data.is_null());
+        assert_eq!(env.diagnostics.len(), 1);
+        assert_eq!(env.diagnostics[0].code, DiagnosticCode::InvalidJson);
+        assert_eq!(env.diagnostics[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn diagnostic_code_wire_form_is_stable() {
+        // The wire strings are a public contract; test that each code
+        // maps to its documented SCREAMING_SNAKE_CASE value both ways.
+        let cases = [
+            (DiagnosticCode::UnsupportedSpecVersion, "UNSUPPORTED_SPEC_VERSION"),
+            (DiagnosticCode::DanglingReference, "DANGLING_REFERENCE"),
+            (DiagnosticCode::DeleteBlockedByReference, "DELETE_BLOCKED_BY_REFERENCE"),
+            (DiagnosticCode::ManualReviewRequired, "MANUAL_REVIEW_REQUIRED"),
+            (DiagnosticCode::ChronologyConflict, "CHRONOLOGY_CONFLICT"),
+        ];
+        for (code, wire) in cases {
+            assert_eq!(code.as_str(), wire);
+            assert_eq!(DiagnosticCode::from_wire(wire), Some(code));
+        }
+    }
+
+    #[test]
+    fn envelope_json_round_trip_preserves_all_fields() {
+        let original = Envelope::ok_with(
+            json!({"nested": [1, 2, {"a": "b"}]}),
+            vec![
+                Diagnostic {
+                    code: DiagnosticCode::DanglingReference,
+                    severity: Severity::Warning,
+                    message: "person X not found".into(),
+                    entity_ref: Some("families/abc".into()),
+                },
+                Diagnostic {
+                    code: DiagnosticCode::ManualReviewRequired,
+                    severity: Severity::Info,
+                    message: "ambiguous merge".into(),
+                    entity_ref: None,
+                },
+            ],
+        );
+        let wire = original.to_json();
+        let parsed: Envelope = serde_json::from_str(&wire).expect("re-parse");
+
+        assert_eq!(parsed.status, original.status);
+        assert_eq!(parsed.data, original.data);
+        assert_eq!(parsed.diagnostics.len(), 2);
+        assert_eq!(parsed.diagnostics[0].code, DiagnosticCode::DanglingReference);
+        assert_eq!(parsed.diagnostics[0].severity, Severity::Warning);
+        assert_eq!(parsed.diagnostics[0].message, "person X not found");
+        assert_eq!(parsed.diagnostics[0].entity_ref.as_deref(), Some("families/abc"));
+        assert!(parsed.diagnostics[1].entity_ref.is_none());
+    }
+
+    #[test]
+    fn omitted_entity_ref_is_absent_from_wire_form() {
+        let env = Envelope::error(DiagnosticCode::InvalidJson, "boom");
+        let wire = env.to_json();
+        // entity_ref is skipped when None so it should not appear at all.
+        assert!(!wire.contains("entity_ref"), "wire form had entity_ref: {wire}");
+        // Status and code strings must be present verbatim.
+        assert!(wire.contains("\"status\":\"error\""));
+        assert!(wire.contains("\"code\":\"INVALID_JSON\""));
+    }
+
+    #[test]
+    fn unknown_wire_code_deserializes_to_error() {
+        let wire = r#"{"status":"error","data":null,"diagnostics":[
+            {"code":"MADE_UP_CODE","severity":"error","message":"x"}]}"#;
+        // A future library may emit codes this build does not know. We
+        // reject at parse-time rather than silently mislabel — the caller
+        // can fall back to inspecting the raw JSON if they want to be
+        // forward-compatible.
+        let err = serde_json::from_str::<Envelope>(wire).unwrap_err();
+        assert!(err.to_string().contains("unknown diagnostic code"));
     }
 }

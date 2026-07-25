@@ -71,3 +71,70 @@ pub struct FlatBundle {
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn empty_bundle_serializes_with_only_manifest() {
+        let b = FlatBundle::default();
+        let s = serde_json::to_string(&b).unwrap();
+        // Empty collections are skipped; only manifest (null) survives.
+        assert_eq!(s, r#"{"manifest":null}"#);
+    }
+
+    #[test]
+    fn bundle_round_trip_preserves_ordered_persons() {
+        let mut b = FlatBundle {
+            manifest: json!({"axgf": "1.0", "created_at": "2026-06-15T10:00:00Z"}),
+            ..Default::default()
+        };
+        b.persons.insert("aaa".into(), json!({"name": "A"}));
+        b.persons.insert("bbb".into(), json!({"name": "B"}));
+
+        let wire = serde_json::to_string(&b).unwrap();
+        let parsed: FlatBundle = serde_json::from_str(&wire).unwrap();
+
+        assert_eq!(parsed.persons.len(), 2);
+        // BTreeMap orders keys — deterministic across runs.
+        let keys: Vec<&String> = parsed.persons.keys().collect();
+        assert_eq!(keys, vec!["aaa", "bbb"]);
+        assert_eq!(parsed.manifest["axgf"], "1.0");
+    }
+
+    #[test]
+    fn unknown_top_level_fields_survive_round_trip() {
+        // A newer-spec bundle carrying fields V1 does not understand.
+        // The forward-compat contract says these MUST NOT be dropped.
+        let input = json!({
+            "manifest": {"axgf": "2.0", "stats": {"persons": 0}, "future_field": 42},
+            "persons": {},
+            "future_collection": {"xyz": {"a": 1}},
+            "another_top_level": "hello"
+        });
+        let parsed: FlatBundle = serde_json::from_value(input.clone()).unwrap();
+
+        assert!(parsed.extra.contains_key("future_collection"));
+        assert_eq!(parsed.extra["another_top_level"], json!("hello"));
+        assert_eq!(parsed.manifest["future_field"], json!(42));
+
+        let out = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(out["another_top_level"], json!("hello"));
+        assert_eq!(out["future_collection"]["xyz"]["a"], json!(1));
+        assert_eq!(out["manifest"]["future_field"], json!(42));
+    }
+
+    #[test]
+    fn missing_collections_deserialize_as_empty() {
+        // Per SPEC §2.2 partial bundles are valid; a bundle with only
+        // persons should parse without failing.
+        let input = json!({"manifest": {"axgf": "1.0"}, "persons": {"p1": {"x": 1}}});
+        let parsed: FlatBundle = serde_json::from_value(input).unwrap();
+        assert_eq!(parsed.persons.len(), 1);
+        assert!(parsed.families.is_empty());
+        assert!(parsed.events.is_empty());
+        assert!(parsed.documents.is_empty());
+    }
+}
