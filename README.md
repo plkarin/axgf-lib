@@ -92,6 +92,49 @@ Deliberately **not** in V1: graph traversal, a query engine, sessions, disk acce
 
 ---
 
+## Quick start
+
+```rust
+use axgf_rs::{
+    add_entity, create_bundle, export_bundle, import_bundle, validate,
+    logic::crud::EntityKind,
+};
+
+// 1. Start an empty bundle.
+let empty = create_bundle(Some("Famille Pierre-Léonard"));
+let mut flat = serde_json::to_string(&empty.data).unwrap();
+
+// 2. Add a person.
+let entity = r#"{
+  "identity": {
+    "name": {"display": "Jean Pierre-Léonard", "components": []},
+    "gender": {"value": "M"},
+    "is_living": false
+  }
+}"#;
+let added = add_entity(&flat, EntityKind::Person, entity);
+flat = serde_json::to_string(&added.data["bundle"]).unwrap();
+
+// 3. Validate — non-blocking; warnings and errors both surface in diagnostics.
+let report = validate(&flat);
+for d in &report.diagnostics {
+    eprintln!("{} {}: {}", d.code.as_str(), format!("{:?}", d.severity), d.message);
+}
+
+// 4. Export to .axgf bytes (base64 inside the envelope's data).
+let exp = export_bundle(&flat);
+let zip_b64 = exp.data["zip_base64"].as_str().unwrap();
+
+// 5. Round-trip: import the same bytes back into a flat bundle.
+let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, zip_b64).unwrap();
+let imp = import_bundle(&bytes);
+assert_eq!(imp.status.to_string(), "ok");  // pseudo — see the API docs
+```
+
+See [`docs/API.md`](./docs/API.md) for the full function-by-function surface.
+
+---
+
 ## Platform bindings
 
 The same core is exposed to every target through thin, logic-free adapters, selected by Cargo feature:
