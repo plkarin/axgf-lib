@@ -41,30 +41,30 @@ pub struct FlatBundle {
     pub manifest: Value,
 
     /// Person entities keyed by lowercase UUID v4.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub persons: BTreeMap<String, Value>,
     /// Family entities keyed by lowercase UUID v4.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub families: BTreeMap<String, Value>,
     /// Event entities keyed by lowercase UUID v4.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub events: BTreeMap<String, Value>,
     /// Link entities keyed by lowercase UUID v4.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub links: BTreeMap<String, Value>,
     /// Occupation entities keyed by lowercase UUID v4.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub occupations: BTreeMap<String, Value>,
     /// Source entities keyed by lowercase UUID v4.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub sources: BTreeMap<String, Value>,
     /// Place entities keyed by lowercase UUID v4.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub places: BTreeMap<String, Value>,
     /// Document metadata entities keyed by lowercase UUID v4. Binary
     /// payloads live in [`FlatBundle::attachments`], indexed by ZIP path
     /// (e.g. `documents/files/{uuid}.pdf`).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub documents: BTreeMap<String, Value>,
 
     /// Auxiliary files that are part of the bundle but not modeled as
@@ -92,11 +92,30 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn empty_bundle_serializes_with_only_manifest() {
+    fn empty_bundle_serializes_with_all_eight_collections_present() {
+        // Collections always appear (as `{}`) so bindings can index
+        // `bundle.persons` unconditionally without a null-check.
         let b = FlatBundle::default();
-        let s = serde_json::to_string(&b).unwrap();
-        // Empty collections are skipped; only manifest (null) survives.
-        assert_eq!(s, r#"{"manifest":null}"#);
+        let v = serde_json::to_value(&b).unwrap();
+        assert!(v["manifest"].is_null());
+        for key in [
+            "persons",
+            "families",
+            "events",
+            "links",
+            "occupations",
+            "sources",
+            "places",
+            "documents",
+        ] {
+            assert!(
+                v[key].as_object().map(|o| o.is_empty()).unwrap_or(false),
+                "expected empty {key} object, got {:?}",
+                v[key]
+            );
+        }
+        // Attachments stays skipped when empty (bundles rarely carry any).
+        assert!(v.get("attachments").is_none());
     }
 
     #[test]

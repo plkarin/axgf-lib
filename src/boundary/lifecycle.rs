@@ -49,7 +49,7 @@ const ENTITY_DIRS: [(&str, &str); 8] = [
 ];
 
 /// Format a `SystemTime`-equivalent as an ISO 8601 UTC string.
-fn now_iso8601_utc() -> String {
+pub(crate) fn now_iso8601_utc() -> String {
     OffsetDateTime::now_utc()
         .format(&Iso8601::DEFAULT)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into())
@@ -84,7 +84,7 @@ pub(crate) fn parse_flat(flat_json: &str) -> Result<FlatBundle, Envelope> {
 }
 
 /// Compute a fresh stats object from the entity maps in a `FlatBundle`.
-fn compute_stats(b: &FlatBundle) -> Value {
+pub(crate) fn compute_stats(b: &FlatBundle) -> Value {
     json!({
         "persons":     b.persons.len(),
         "families":    b.families.len(),
