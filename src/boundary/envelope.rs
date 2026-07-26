@@ -81,25 +81,25 @@ impl DiagnosticCode {
     /// The canonical wire-form string for this code.
     pub fn as_str(self) -> &'static str {
         match self {
-            DiagnosticCode::UnsupportedSpecVersion   => "UNSUPPORTED_SPEC_VERSION",
-            DiagnosticCode::InvalidJson              => "INVALID_JSON",
-            DiagnosticCode::InvalidBundleStructure   => "INVALID_BUNDLE_STRUCTURE",
-            DiagnosticCode::SchemaValidationFailed   => "SCHEMA_VALIDATION_FAILED",
-            DiagnosticCode::DanglingReference        => "DANGLING_REFERENCE",
-            DiagnosticCode::DuplicateEntityId        => "DUPLICATE_ENTITY_ID",
-            DiagnosticCode::DuplicateUniqueRef       => "DUPLICATE_UNIQUE_REF",
-            DiagnosticCode::CycleDetected            => "CYCLE_DETECTED",
-            DiagnosticCode::ChronologyConflict       => "CHRONOLOGY_CONFLICT",
-            DiagnosticCode::EntityNotFound           => "ENTITY_NOT_FOUND",
-            DiagnosticCode::EntityAlreadyExists      => "ENTITY_ALREADY_EXISTS",
-            DiagnosticCode::UnknownEntityKind        => "UNKNOWN_ENTITY_KIND",
+            DiagnosticCode::UnsupportedSpecVersion => "UNSUPPORTED_SPEC_VERSION",
+            DiagnosticCode::InvalidJson => "INVALID_JSON",
+            DiagnosticCode::InvalidBundleStructure => "INVALID_BUNDLE_STRUCTURE",
+            DiagnosticCode::SchemaValidationFailed => "SCHEMA_VALIDATION_FAILED",
+            DiagnosticCode::DanglingReference => "DANGLING_REFERENCE",
+            DiagnosticCode::DuplicateEntityId => "DUPLICATE_ENTITY_ID",
+            DiagnosticCode::DuplicateUniqueRef => "DUPLICATE_UNIQUE_REF",
+            DiagnosticCode::CycleDetected => "CYCLE_DETECTED",
+            DiagnosticCode::ChronologyConflict => "CHRONOLOGY_CONFLICT",
+            DiagnosticCode::EntityNotFound => "ENTITY_NOT_FOUND",
+            DiagnosticCode::EntityAlreadyExists => "ENTITY_ALREADY_EXISTS",
+            DiagnosticCode::UnknownEntityKind => "UNKNOWN_ENTITY_KIND",
             DiagnosticCode::DeleteBlockedByReference => "DELETE_BLOCKED_BY_REFERENCE",
-            DiagnosticCode::ManualReviewRequired     => "MANUAL_REVIEW_REQUIRED",
-            DiagnosticCode::ZipReadError             => "ZIP_READ_ERROR",
-            DiagnosticCode::ZipWriteError            => "ZIP_WRITE_ERROR",
-            DiagnosticCode::GedcomParseError         => "GEDCOM_PARSE_ERROR",
-            DiagnosticCode::GedcomUnrecognizedTag    => "GEDCOM_UNRECOGNIZED_TAG",
-            DiagnosticCode::Internal                 => "INTERNAL",
+            DiagnosticCode::ManualReviewRequired => "MANUAL_REVIEW_REQUIRED",
+            DiagnosticCode::ZipReadError => "ZIP_READ_ERROR",
+            DiagnosticCode::ZipWriteError => "ZIP_WRITE_ERROR",
+            DiagnosticCode::GedcomParseError => "GEDCOM_PARSE_ERROR",
+            DiagnosticCode::GedcomUnrecognizedTag => "GEDCOM_UNRECOGNIZED_TAG",
+            DiagnosticCode::Internal => "INTERNAL",
         }
     }
 
@@ -111,25 +111,25 @@ impl DiagnosticCode {
     pub fn from_wire(s: &str) -> Option<Self> {
         use DiagnosticCode::*;
         Some(match s {
-            "UNSUPPORTED_SPEC_VERSION"    => UnsupportedSpecVersion,
-            "INVALID_JSON"                => InvalidJson,
-            "INVALID_BUNDLE_STRUCTURE"    => InvalidBundleStructure,
-            "SCHEMA_VALIDATION_FAILED"    => SchemaValidationFailed,
-            "DANGLING_REFERENCE"          => DanglingReference,
-            "DUPLICATE_ENTITY_ID"         => DuplicateEntityId,
-            "DUPLICATE_UNIQUE_REF"        => DuplicateUniqueRef,
-            "CYCLE_DETECTED"              => CycleDetected,
-            "CHRONOLOGY_CONFLICT"         => ChronologyConflict,
-            "ENTITY_NOT_FOUND"            => EntityNotFound,
-            "ENTITY_ALREADY_EXISTS"       => EntityAlreadyExists,
-            "UNKNOWN_ENTITY_KIND"         => UnknownEntityKind,
+            "UNSUPPORTED_SPEC_VERSION" => UnsupportedSpecVersion,
+            "INVALID_JSON" => InvalidJson,
+            "INVALID_BUNDLE_STRUCTURE" => InvalidBundleStructure,
+            "SCHEMA_VALIDATION_FAILED" => SchemaValidationFailed,
+            "DANGLING_REFERENCE" => DanglingReference,
+            "DUPLICATE_ENTITY_ID" => DuplicateEntityId,
+            "DUPLICATE_UNIQUE_REF" => DuplicateUniqueRef,
+            "CYCLE_DETECTED" => CycleDetected,
+            "CHRONOLOGY_CONFLICT" => ChronologyConflict,
+            "ENTITY_NOT_FOUND" => EntityNotFound,
+            "ENTITY_ALREADY_EXISTS" => EntityAlreadyExists,
+            "UNKNOWN_ENTITY_KIND" => UnknownEntityKind,
             "DELETE_BLOCKED_BY_REFERENCE" => DeleteBlockedByReference,
-            "MANUAL_REVIEW_REQUIRED"      => ManualReviewRequired,
-            "ZIP_READ_ERROR"              => ZipReadError,
-            "ZIP_WRITE_ERROR"             => ZipWriteError,
-            "GEDCOM_PARSE_ERROR"          => GedcomParseError,
-            "GEDCOM_UNRECOGNIZED_TAG"     => GedcomUnrecognizedTag,
-            "INTERNAL"                    => Internal,
+            "MANUAL_REVIEW_REQUIRED" => ManualReviewRequired,
+            "ZIP_READ_ERROR" => ZipReadError,
+            "ZIP_WRITE_ERROR" => ZipWriteError,
+            "GEDCOM_PARSE_ERROR" => GedcomParseError,
+            "GEDCOM_UNRECOGNIZED_TAG" => GedcomUnrecognizedTag,
+            "INTERNAL" => Internal,
             _ => return None,
         })
     }
@@ -144,9 +144,8 @@ impl Serialize for DiagnosticCode {
 impl<'de> Deserialize<'de> for DiagnosticCode {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let raw = String::deserialize(d)?;
-        DiagnosticCode::from_wire(&raw).ok_or_else(|| {
-            de::Error::custom(format!("unknown diagnostic code: {raw}"))
-        })
+        DiagnosticCode::from_wire(&raw)
+            .ok_or_else(|| de::Error::custom(format!("unknown diagnostic code: {raw}")))
     }
 }
 
@@ -181,13 +180,21 @@ pub struct Envelope {
 impl Envelope {
     /// Construct an `ok` envelope with the given payload and no diagnostics.
     pub fn ok(data: serde_json::Value) -> Self {
-        Self { status: Status::Ok, data, diagnostics: Vec::new() }
+        Self {
+            status: Status::Ok,
+            data,
+            diagnostics: Vec::new(),
+        }
     }
 
     /// Construct an `ok` envelope carrying the given diagnostics (typically
     /// warnings).
     pub fn ok_with(data: serde_json::Value, diagnostics: Vec<Diagnostic>) -> Self {
-        Self { status: Status::Ok, data, diagnostics }
+        Self {
+            status: Status::Ok,
+            data,
+            diagnostics,
+        }
     }
 
     /// Construct an `error` envelope with a single diagnostic and `data =
@@ -207,7 +214,11 @@ impl Envelope {
 
     /// Construct an `error` envelope carrying multiple diagnostics.
     pub fn error_many(diagnostics: Vec<Diagnostic>) -> Self {
-        Self { status: Status::Error, data: serde_json::Value::Null, diagnostics }
+        Self {
+            status: Status::Error,
+            data: serde_json::Value::Null,
+            diagnostics,
+        }
     }
 
     /// Serialize the envelope to a JSON string (never fails: all fields are
@@ -251,10 +262,19 @@ mod tests {
         // The wire strings are a public contract; test that each code
         // maps to its documented SCREAMING_SNAKE_CASE value both ways.
         let cases = [
-            (DiagnosticCode::UnsupportedSpecVersion, "UNSUPPORTED_SPEC_VERSION"),
+            (
+                DiagnosticCode::UnsupportedSpecVersion,
+                "UNSUPPORTED_SPEC_VERSION",
+            ),
             (DiagnosticCode::DanglingReference, "DANGLING_REFERENCE"),
-            (DiagnosticCode::DeleteBlockedByReference, "DELETE_BLOCKED_BY_REFERENCE"),
-            (DiagnosticCode::ManualReviewRequired, "MANUAL_REVIEW_REQUIRED"),
+            (
+                DiagnosticCode::DeleteBlockedByReference,
+                "DELETE_BLOCKED_BY_REFERENCE",
+            ),
+            (
+                DiagnosticCode::ManualReviewRequired,
+                "MANUAL_REVIEW_REQUIRED",
+            ),
             (DiagnosticCode::ChronologyConflict, "CHRONOLOGY_CONFLICT"),
         ];
         for (code, wire) in cases {
@@ -288,10 +308,16 @@ mod tests {
         assert_eq!(parsed.status, original.status);
         assert_eq!(parsed.data, original.data);
         assert_eq!(parsed.diagnostics.len(), 2);
-        assert_eq!(parsed.diagnostics[0].code, DiagnosticCode::DanglingReference);
+        assert_eq!(
+            parsed.diagnostics[0].code,
+            DiagnosticCode::DanglingReference
+        );
         assert_eq!(parsed.diagnostics[0].severity, Severity::Warning);
         assert_eq!(parsed.diagnostics[0].message, "person X not found");
-        assert_eq!(parsed.diagnostics[0].entity_ref.as_deref(), Some("families/abc"));
+        assert_eq!(
+            parsed.diagnostics[0].entity_ref.as_deref(),
+            Some("families/abc")
+        );
         assert!(parsed.diagnostics[1].entity_ref.is_none());
     }
 
@@ -300,7 +326,10 @@ mod tests {
         let env = Envelope::error(DiagnosticCode::InvalidJson, "boom");
         let wire = env.to_json();
         // entity_ref is skipped when None so it should not appear at all.
-        assert!(!wire.contains("entity_ref"), "wire form had entity_ref: {wire}");
+        assert!(
+            !wire.contains("entity_ref"),
+            "wire form had entity_ref: {wire}"
+        );
         // Status and code strings must be present verbatim.
         assert!(wire.contains("\"status\":\"error\""));
         assert!(wire.contains("\"code\":\"INVALID_JSON\""));

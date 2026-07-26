@@ -93,8 +93,14 @@ fn full_manifest_from_spec_section_3_parses() {
     let m: Manifest = parse(&input);
     assert_eq!(m.stats.persons, 142);
     assert_eq!(m.stats.documents, 215);
-    assert_eq!(m.family.as_ref().unwrap().primary_culture.as_deref(), Some("fr"));
-    assert_eq!(m.privacy.as_ref().unwrap().contains_living_persons, Some(true));
+    assert_eq!(
+        m.family.as_ref().unwrap().primary_culture.as_deref(),
+        Some("fr")
+    );
+    assert_eq!(
+        m.privacy.as_ref().unwrap().contains_living_persons,
+        Some(true)
+    );
     // `compatibility` and `checksums` are typed as raw Value — payload preserved verbatim.
     assert_eq!(m.compatibility.as_ref().unwrap()["gedcom_source"], "5.5.1");
     assert_eq!(m.checksums.as_ref().unwrap()["algorithm"], "sha256");
@@ -195,7 +201,10 @@ fn rich_person_from_spec_4_1_parses_all_blocks() {
     assert_eq!(name_entry.extra["confidence"], 0.95);
     // Birth is a full Vital with date+confidence.
     let birth = p.birth.as_ref().unwrap();
-    assert_eq!(birth.date.as_ref().unwrap().value.as_deref(), Some("1923-04-12"));
+    assert_eq!(
+        birth.date.as_ref().unwrap().value.as_deref(),
+        Some("1923-04-12")
+    );
     assert_eq!(birth.date.as_ref().unwrap().confidence, Some(0.98));
     assert_eq!(birth.confidence, Some(0.98));
     // Death cause is null in input; parses as None.
@@ -210,7 +219,10 @@ fn rich_person_from_spec_4_1_parses_all_blocks() {
     assert_eq!(ai.hypotheses.len(), 1);
     assert_eq!(ai.hypotheses[0].status, "pending");
     // Extensions kept as raw Value.
-    assert_eq!(p.base.extensions.as_ref().unwrap()["x-axgenealogy-generation"], 2);
+    assert_eq!(
+        p.base.extensions.as_ref().unwrap()["x-axgenealogy-generation"],
+        2
+    );
 }
 
 // ---------- Family ----------
@@ -249,7 +261,10 @@ fn family_from_spec_4_2_parses() {
     assert_eq!(f.union.kind, "marriage");
     assert_eq!(f.union.status.as_deref(), Some("ended_by_death"));
     assert_eq!(f.union.persons.len(), 2);
-    assert_eq!(f.union.end.as_ref().unwrap().reason.as_deref(), Some("death_of_spouse"));
+    assert_eq!(
+        f.union.end.as_ref().unwrap().reason.as_deref(),
+        Some("death_of_spouse")
+    );
     assert_eq!(f.children.len(), 1);
     assert_eq!(f.children[0].birth_order, Some(1));
     assert_eq!(f.documents[0].role.as_deref(), Some("family_photo"));
@@ -276,13 +291,22 @@ fn polygamous_family_extras_survive() {
     });
     let f: Family = parse(&input);
     // Both unknown fields captured in extras.
-    assert_eq!(f.union.extra["primary_person_id"], "aaaa1234-e29b-41d4-a716-446655440020");
+    assert_eq!(
+        f.union.extra["primary_person_id"],
+        "aaaa1234-e29b-41d4-a716-446655440020"
+    );
     let unions = f.union.extra["unions"].as_array().unwrap();
     assert_eq!(unions.len(), 2);
-    assert_eq!(unions[1]["spouse_id"], "aaaa1234-e29b-41d4-a716-446655440031");
+    assert_eq!(
+        unions[1]["spouse_id"],
+        "aaaa1234-e29b-41d4-a716-446655440031"
+    );
     // Re-serialize: extras survive at their original path.
     let out = serde_json::to_value(&f).unwrap();
-    assert_eq!(out["union"]["primary_person_id"], "aaaa1234-e29b-41d4-a716-446655440020");
+    assert_eq!(
+        out["union"]["primary_person_id"],
+        "aaaa1234-e29b-41d4-a716-446655440020"
+    );
     assert_eq!(out["union"]["unions"].as_array().unwrap().len(), 2);
 }
 
@@ -374,8 +398,21 @@ fn occupation_from_spec_4_5_parses() {
     let o: Occupation = parse(&input);
     assert_eq!(o.title, "Instituteur");
     assert_eq!(o.title_normalized.as_deref(), Some("teacher"));
-    assert_eq!(o.employer.as_ref().unwrap().name.as_deref(), Some("École publique de Saint-Denis"));
-    assert_eq!(o.valid_from.as_ref().unwrap().date.as_ref().unwrap().precision.as_deref(), Some("year"));
+    assert_eq!(
+        o.employer.as_ref().unwrap().name.as_deref(),
+        Some("École publique de Saint-Denis")
+    );
+    assert_eq!(
+        o.valid_from
+            .as_ref()
+            .unwrap()
+            .date
+            .as_ref()
+            .unwrap()
+            .precision
+            .as_deref(),
+        Some("year")
+    );
     assert_eq!(o.confidence, Some(0.90));
 }
 
@@ -405,7 +442,10 @@ fn source_from_spec_5_4_parses() {
     let s: Source = parse(&input);
     assert_eq!(s.source_type, "birth_certificate");
     assert_eq!(s.reliability, "primary");
-    assert_eq!(s.repository.as_ref().unwrap().reference.as_deref(), Some("5MI/47/1923/0047"));
+    assert_eq!(
+        s.repository.as_ref().unwrap().reference.as_deref(),
+        Some("5MI/47/1923/0047")
+    );
     assert_eq!(s.conflicts.len(), 1);
     assert_eq!(s.conflicts[0].field, "birthdate");
     assert_eq!(s.conflicts[0].resolution.as_deref(), Some("this_preferred"));
@@ -467,7 +507,10 @@ fn place_from_spec_5_3_parses() {
     assert_eq!(p.place_type.as_deref(), Some("city"));
     assert_eq!(p.country_current.as_deref(), Some("FR"));
     assert_eq!(p.coordinates.as_ref().unwrap().lat, Some(-20.8823));
-    assert_eq!(p.identifiers.as_ref().unwrap().insee.as_deref(), Some("97411"));
+    assert_eq!(
+        p.identifiers.as_ref().unwrap().insee.as_deref(),
+        Some("97411")
+    );
 }
 
 // ---------- Document ----------
@@ -502,7 +545,10 @@ fn document_from_spec_5_5_parses() {
     assert_eq!(d.status, "present");
     assert_eq!(d.file.as_ref().unwrap().size_bytes, Some(1_048_576));
     assert_eq!(d.linked_to.len(), 2);
-    assert_eq!(d.ocr.as_ref().unwrap().engine.as_deref(), Some("tesseract-5"));
+    assert_eq!(
+        d.ocr.as_ref().unwrap().engine.as_deref(),
+        Some("tesseract-5")
+    );
     let ai = d.ai.as_ref().unwrap();
     assert_eq!(ai.suggested_links.len(), 1);
     assert_eq!(ai.suggested_links[0].confidence, Some(0.97));

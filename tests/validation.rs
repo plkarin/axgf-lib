@@ -111,15 +111,21 @@ fn schema_violation_produces_warning_not_error_status() {
     });
     let env = ok_env(&flat);
     assert_eq!(env.status, Status::Ok, "validation is non-blocking");
-    assert!(codes(&env).contains(&"SCHEMA_VALIDATION_FAILED"),
-            "got codes: {:?}", codes(&env));
+    assert!(
+        codes(&env).contains(&"SCHEMA_VALIDATION_FAILED"),
+        "got codes: {:?}",
+        codes(&env)
+    );
     let sv = env
         .diagnostics
         .iter()
         .find(|d| d.code.as_str() == "SCHEMA_VALIDATION_FAILED")
         .unwrap();
     assert_eq!(sv.severity, Severity::Warning);
-    assert_eq!(sv.entity_ref.as_deref(), Some("persons/550e8400-e29b-41d4-a716-446655440077"));
+    assert_eq!(
+        sv.entity_ref.as_deref(),
+        Some("persons/550e8400-e29b-41d4-a716-446655440077")
+    );
 }
 
 // ---------- Dangling refs ----------
@@ -141,9 +147,16 @@ fn dangling_reference_in_family_child_produces_warning() {
         .iter()
         .filter(|d| d.code.as_str() == "DANGLING_REFERENCE")
         .collect();
-    assert!(!dr.is_empty(), "expected DANGLING_REFERENCE: {:?}", env.diagnostics);
+    assert!(
+        !dr.is_empty(),
+        "expected DANGLING_REFERENCE: {:?}",
+        env.diagnostics
+    );
     assert_eq!(dr[0].severity, Severity::Warning);
-    assert!(dr[0].message.contains(ghost), "message should name the missing id");
+    assert!(
+        dr[0].message.contains(ghost),
+        "message should name the missing id"
+    );
 }
 
 #[test]
@@ -164,7 +177,12 @@ fn dangling_place_and_source_refs_from_event_are_reported() {
         .iter()
         .filter(|d| d.code.as_str() == "DANGLING_REFERENCE")
         .collect();
-    assert_eq!(dr.len(), 2, "expected place + source dangling refs, got: {:?}", env.diagnostics);
+    assert_eq!(
+        dr.len(),
+        2,
+        "expected place + source dangling refs, got: {:?}",
+        env.diagnostics
+    );
 }
 
 // ---------- Cycles ----------
@@ -213,7 +231,11 @@ fn cross_family_ancestor_loop_is_detected() {
         .iter()
         .filter(|d| d.code.as_str() == "CYCLE_DETECTED")
         .collect();
-    assert!(!cs.is_empty(), "expected cross-family cycle: {:?}", env.diagnostics);
+    assert!(
+        !cs.is_empty(),
+        "expected cross-family cycle: {:?}",
+        env.diagnostics
+    );
 }
 
 // ---------- Chronology ----------
@@ -236,8 +258,11 @@ fn child_born_before_parent_triggers_chronology_conflict_warning() {
         .find(|d| d.code.as_str() == "CHRONOLOGY_CONFLICT")
         .expect("expected CHRONOLOGY_CONFLICT");
     assert_eq!(cc.severity, Severity::Warning);
-    assert!(cc.message.contains("1900") && cc.message.contains("1950"),
-            "message should carry both years: {}", cc.message);
+    assert!(
+        cc.message.contains("1900") && cc.message.contains("1950"),
+        "message should carry both years: {}",
+        cc.message
+    );
 }
 
 #[test]
@@ -253,8 +278,11 @@ fn chronology_ok_when_dates_missing() {
     });
     flat["families"] = json!({ fam: minimal_family(fam, &[parent], &[child]) });
     let env = ok_env(&flat);
-    assert!(!codes(&env).contains(&"CHRONOLOGY_CONFLICT"),
-            "no dates → no chronology warning: {:?}", env.diagnostics);
+    assert!(
+        !codes(&env).contains(&"CHRONOLOGY_CONFLICT"),
+        "no dates → no chronology warning: {:?}",
+        env.diagnostics
+    );
 }
 
 // ---------- Duplicates ----------

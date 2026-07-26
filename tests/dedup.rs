@@ -77,7 +77,11 @@ fn two_families_with_same_spouse_set_merge_children_are_unioned() {
     assert_eq!(env.data["merged_families"], 1);
     let out = &env.data["bundle"];
     // Keeper = lowest UUID.
-    assert!(out["families"][fa].is_object(), "keeper family gone: {:?}", out["families"]);
+    assert!(
+        out["families"][fa].is_object(),
+        "keeper family gone: {:?}",
+        out["families"]
+    );
     assert!(out["families"][fb].is_null() || out["families"].get(fb).is_none());
     let kids: Vec<&str> = out["families"][fa]["children"]
         .as_array()
@@ -157,8 +161,10 @@ fn two_persons_with_identical_name_and_dates_merge_and_refs_rewrite() {
     assert_eq!(env.data["merged_persons"], 1);
     let out = &env.data["bundle"];
     assert!(out["persons"][a].is_object());
-    assert!(out["persons"].get(b_id).is_none() || out["persons"][b_id].is_null(),
-            "victim should be gone");
+    assert!(
+        out["persons"].get(b_id).is_none() || out["persons"][b_id].is_null(),
+        "victim should be gone"
+    );
     // Reference rewritten on the event.
     assert_eq!(out["events"][evt]["participants"][0]["entity_id"], a);
 }

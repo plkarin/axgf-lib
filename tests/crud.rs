@@ -62,11 +62,17 @@ fn add_generates_uuid_when_id_missing() {
     // Version 4 uuid: 15th char (index 14) is '4'.
     assert_eq!(id.chars().nth(14), Some('4'), "expected UUID v4: {id}");
     // Bundle contains the new person.
-    assert_eq!(bundle_of(&env)["persons"][id]["identity"]["name"]["display"], "New");
+    assert_eq!(
+        bundle_of(&env)["persons"][id]["identity"]["name"]["display"],
+        "New"
+    );
     // Stats updated.
     assert_eq!(bundle_of(&env)["manifest"]["stats"]["persons"], 1);
     // updated_at was refreshed to some ISO-looking string.
-    assert!(bundle_of(&env)["manifest"]["updated_at"].as_str().unwrap().starts_with("20"));
+    assert!(bundle_of(&env)["manifest"]["updated_at"]
+        .as_str()
+        .unwrap()
+        .starts_with("20"));
 }
 
 #[test]
@@ -127,8 +133,14 @@ fn update_replaces_existing_entity() {
     updated["identity"]["gender"]["value"] = json!("F");
     let env = update_entity(&to_str(&b), EntityKind::Person, &to_str(&updated));
     assert_eq!(env.status, Status::Ok);
-    assert_eq!(bundle_of(&env)["persons"][id]["identity"]["name"]["display"], "After");
-    assert_eq!(bundle_of(&env)["persons"][id]["identity"]["gender"]["value"], "F");
+    assert_eq!(
+        bundle_of(&env)["persons"][id]["identity"]["name"]["display"],
+        "After"
+    );
+    assert_eq!(
+        bundle_of(&env)["persons"][id]["identity"]["gender"]["value"],
+        "F"
+    );
 }
 
 #[test]
@@ -168,8 +180,14 @@ fn delete_reject_blocks_when_referred_from_family() {
 
     let env = delete_entity(&to_str(&b), EntityKind::Person, p1, DeletePolicy::Reject);
     assert_eq!(env.status, Status::Error);
-    assert_eq!(env.diagnostics[0].code.as_str(), "DELETE_BLOCKED_BY_REFERENCE");
-    assert!(env.diagnostics[0].message.contains(fam), "should name the referrer");
+    assert_eq!(
+        env.diagnostics[0].code.as_str(),
+        "DELETE_BLOCKED_BY_REFERENCE"
+    );
+    assert!(
+        env.diagnostics[0].message.contains(fam),
+        "should name the referrer"
+    );
     // Bundle is unchanged — data is null under error.
     assert!(env.data.is_null());
     // Sanity: original bundle would have had p1.
@@ -245,7 +263,11 @@ fn delete_cascade_removes_referring_array_items_and_scalar_fields() {
     assert_eq!(env2.status, Status::Ok);
     let out2 = bundle_of(&env2);
     assert!(
-        out2["events"][evt].as_object().unwrap().get("place_id").is_none(),
+        out2["events"][evt]
+            .as_object()
+            .unwrap()
+            .get("place_id")
+            .is_none(),
         "cascade should REMOVE scalar place_id, not null it. Got: {:?}",
         out2["events"][evt]
     );
@@ -297,14 +319,19 @@ fn delete_orphan_nulls_scalar_and_keeps_array_shape() {
     let uni = out["families"][fam]["union"]["persons"].as_array().unwrap();
     assert_eq!(uni.len(), 2);
     let nulled = uni.iter().filter(|e| e["person_id"].is_null()).count();
-    assert_eq!(nulled, 1, "one entry should be nulled; the p2 entry stays intact");
+    assert_eq!(
+        nulled, 1,
+        "one entry should be nulled; the p2 entry stays intact"
+    );
 
     // Orphan-delete plc: scalar place_id field becomes null, key preserved.
     let env2 = delete_entity(&to_str(out), EntityKind::Place, plc, DeletePolicy::Orphan);
     assert_eq!(env2.status, Status::Ok);
     let ev = &bundle_of(&env2)["events"][evt];
-    assert!(ev.as_object().unwrap().contains_key("place_id"),
-            "orphan preserves the key; only the value is null");
+    assert!(
+        ev.as_object().unwrap().contains_key("place_id"),
+        "orphan preserves the key; only the value is null"
+    );
     assert!(ev["place_id"].is_null());
 }
 
@@ -327,7 +354,11 @@ fn delete_missing_id_returns_entity_not_found() {
 fn crud_rejects_unsupported_spec_version() {
     let mut b = create_bundle(None).data;
     b["manifest"]["axgf"] = json!("9.9");
-    let e = add_entity(&to_str(&b), EntityKind::Person, &to_str(&minimal_person_json(None, "X")));
+    let e = add_entity(
+        &to_str(&b),
+        EntityKind::Person,
+        &to_str(&minimal_person_json(None, "X")),
+    );
     assert_eq!(e.status, Status::Error);
     assert_eq!(e.diagnostics[0].code.as_str(), "UNSUPPORTED_SPEC_VERSION");
 }

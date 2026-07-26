@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::common::{AxgfDate, AxgfName, BaseEntity, DocumentLink, Extra, AiHypothesis};
+use super::common::{AiHypothesis, AxgfDate, AxgfName, BaseEntity, DocumentLink, Extra};
 
 /// A person's gender declaration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

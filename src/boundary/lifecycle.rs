@@ -13,8 +13,8 @@
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read, Write};
 
-use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use serde_json::{json, Value};
 use time::format_description::well_known::Iso8601;
 use time::OffsetDateTime;
@@ -35,17 +35,17 @@ pub const EMBEDDED_SCHEMA: &str = include_str!("../../schema/axgf-1.0.schema.jso
 /// The eight entity kinds and their on-disk directory names. Order
 /// matches the manifest stats field order.
 const ENTITY_DIRS: [(&str, &str); 8] = [
-    ("persons",     "persons"),
-    ("families",    "families"),
-    ("events",      "events"),
-    ("links",       "links"),
+    ("persons", "persons"),
+    ("families", "families"),
+    ("events", "events"),
+    ("links", "links"),
     ("occupations", "occupations"),
-    ("sources",     "sources"),
-    ("places",      "places"),
+    ("sources", "sources"),
+    ("places", "places"),
     // Documents are asymmetric: metadata is in documents/index.json,
     // binary payloads under documents/files/. We list the dir here for
     // stats, but read/write is handled specially.
-    ("documents",   "documents"),
+    ("documents", "documents"),
 ];
 
 /// Format a `SystemTime`-equivalent as an ISO 8601 UTC string.
@@ -79,7 +79,10 @@ pub(crate) fn check_manifest_version(manifest: &Value) -> Result<(), Envelope> {
 /// `INVALID_BUNDLE_STRUCTURE` envelope.
 pub(crate) fn parse_flat(flat_json: &str) -> Result<FlatBundle, Envelope> {
     serde_json::from_str::<FlatBundle>(flat_json).map_err(|e| {
-        Envelope::error(DiagnosticCode::InvalidJson, format!("cannot parse flat bundle: {e}"))
+        Envelope::error(
+            DiagnosticCode::InvalidJson,
+            format!("cannot parse flat bundle: {e}"),
+        )
     })
 }
 
@@ -162,14 +165,14 @@ pub fn import_bundle(zip_bytes: &[u8]) -> Envelope {
     };
 
     let mut manifest: Value = Value::Null;
-    let mut persons     = BTreeMap::new();
-    let mut families    = BTreeMap::new();
-    let mut events      = BTreeMap::new();
-    let mut links       = BTreeMap::new();
+    let mut persons = BTreeMap::new();
+    let mut families = BTreeMap::new();
+    let mut events = BTreeMap::new();
+    let mut links = BTreeMap::new();
     let mut occupations = BTreeMap::new();
-    let mut sources     = BTreeMap::new();
-    let mut places      = BTreeMap::new();
-    let mut documents   = BTreeMap::new();
+    let mut sources = BTreeMap::new();
+    let mut places = BTreeMap::new();
+    let mut documents = BTreeMap::new();
     let mut attachments = BTreeMap::new();
 
     for i in 0..archive.len() {
@@ -205,13 +208,13 @@ pub fn import_bundle(zip_bytes: &[u8]) -> Envelope {
         // Entity dirs: persons/{uuid}.json, families/{uuid}.json, …
         if let Some((collection, id)) = split_entity_path(&name) {
             let target = match collection {
-                "persons"     => &mut persons,
-                "families"    => &mut families,
-                "events"      => &mut events,
-                "links"       => &mut links,
+                "persons" => &mut persons,
+                "families" => &mut families,
+                "events" => &mut events,
+                "links" => &mut links,
                 "occupations" => &mut occupations,
-                "sources"     => &mut sources,
-                "places"      => &mut places,
+                "sources" => &mut sources,
+                "places" => &mut places,
                 _ => unreachable!(),
             };
             match read_json(&mut entry) {
@@ -260,8 +263,14 @@ pub fn import_bundle(zip_bytes: &[u8]) -> Envelope {
 
     let bundle = FlatBundle {
         manifest,
-        persons, families, events, links,
-        occupations, sources, places, documents,
+        persons,
+        families,
+        events,
+        links,
+        occupations,
+        sources,
+        places,
+        documents,
         attachments,
         extra: BTreeMap::new(),
     };
@@ -277,9 +286,8 @@ fn read_json<R: Read>(reader: &mut R) -> Result<Value, Envelope> {
             format!("entry is not UTF-8 text: {e}"),
         ));
     }
-    serde_json::from_str(&buf).map_err(|e| {
-        Envelope::error(DiagnosticCode::InvalidJson, format!("invalid JSON: {e}"))
-    })
+    serde_json::from_str(&buf)
+        .map_err(|e| Envelope::error(DiagnosticCode::InvalidJson, format!("invalid JSON: {e}")))
 }
 
 /// Split a ZIP path of the form `persons/<uuid>.json` into
@@ -330,20 +338,25 @@ pub fn export_bundle(flat_json: &str) -> Envelope {
     let opts = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
     // Helper closure to add a JSON entry.
-    let write_json_entry = |zip: &mut ZipWriter<_>, path: &str, value: &Value| -> Result<(), String> {
-        let text = serde_json::to_string_pretty(value)
-            .map_err(|e| format!("serialize {path}: {e}"))?;
-        zip.start_file(path, opts).map_err(|e| format!("zip start {path}: {e}"))?;
-        zip.write_all(text.as_bytes())
-            .map_err(|e| format!("zip write {path}: {e}"))?;
-        Ok(())
-    };
+    let write_json_entry =
+        |zip: &mut ZipWriter<_>, path: &str, value: &Value| -> Result<(), String> {
+            let text = serde_json::to_string_pretty(value)
+                .map_err(|e| format!("serialize {path}: {e}"))?;
+            zip.start_file(path, opts)
+                .map_err(|e| format!("zip start {path}: {e}"))?;
+            zip.write_all(text.as_bytes())
+                .map_err(|e| format!("zip write {path}: {e}"))?;
+            Ok(())
+        };
 
-    let write_bytes_entry = |zip: &mut ZipWriter<_>, path: &str, bytes: &[u8]| -> Result<(), String> {
-        zip.start_file(path, opts).map_err(|e| format!("zip start {path}: {e}"))?;
-        zip.write_all(bytes).map_err(|e| format!("zip write {path}: {e}"))?;
-        Ok(())
-    };
+    let write_bytes_entry =
+        |zip: &mut ZipWriter<_>, path: &str, bytes: &[u8]| -> Result<(), String> {
+            zip.start_file(path, opts)
+                .map_err(|e| format!("zip start {path}: {e}"))?;
+            zip.write_all(bytes)
+                .map_err(|e| format!("zip write {path}: {e}"))?;
+            Ok(())
+        };
 
     if let Err(e) = write_json_entry(&mut zip, "manifest.json", &bundle.manifest) {
         return Envelope::error(DiagnosticCode::ZipWriteError, e);
@@ -360,13 +373,13 @@ pub fn export_bundle(flat_json: &str) -> Envelope {
 
     // Per-entity directories (seven of them).
     let per_entity: [(&str, &BTreeMap<String, Value>); 7] = [
-        ("persons",     &bundle.persons),
-        ("families",    &bundle.families),
-        ("events",      &bundle.events),
-        ("links",       &bundle.links),
+        ("persons", &bundle.persons),
+        ("families", &bundle.families),
+        ("events", &bundle.events),
+        ("links", &bundle.links),
         ("occupations", &bundle.occupations),
-        ("sources",     &bundle.sources),
-        ("places",      &bundle.places),
+        ("sources", &bundle.sources),
+        ("places", &bundle.places),
     ];
     for (dir, map) in per_entity {
         for (id, value) in map {

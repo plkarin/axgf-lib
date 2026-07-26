@@ -38,7 +38,9 @@ fn read_zip_entry(zip_bytes: &[u8], name: &str) -> Option<Vec<u8>> {
 fn list_zip_names(zip_bytes: &[u8]) -> Vec<String> {
     let cur = std::io::Cursor::new(zip_bytes);
     let mut ar = zip::ZipArchive::new(cur).unwrap();
-    (0..ar.len()).map(|i| ar.by_index(i).unwrap().name().to_string()).collect()
+    (0..ar.len())
+        .map(|i| ar.by_index(i).unwrap().name().to_string())
+        .collect()
 }
 
 // ---------- create_bundle ----------
@@ -52,10 +54,22 @@ fn create_bundle_returns_valid_empty_bundle() {
     let flat = &env.data;
     assert_eq!(flat["manifest"]["axgf"], "1.0");
     // A well-formed created_at looks like "2026-...T..." — spec-compliant ISO 8601.
-    assert!(flat["manifest"]["created_at"].as_str().unwrap().starts_with("20"));
+    assert!(flat["manifest"]["created_at"]
+        .as_str()
+        .unwrap()
+        .starts_with("20"));
     // Empty bundle: stats all zero.
     let s = &flat["manifest"]["stats"];
-    for k in ["persons", "families", "events", "links", "occupations", "sources", "places", "documents"] {
+    for k in [
+        "persons",
+        "families",
+        "events",
+        "links",
+        "occupations",
+        "sources",
+        "places",
+        "documents",
+    ] {
         assert_eq!(s[k], 0, "expected {k} = 0 in fresh bundle");
     }
     // No family_name provided ⇒ no `family` block.
@@ -66,7 +80,10 @@ fn create_bundle_returns_valid_empty_bundle() {
 fn create_bundle_with_family_name_populates_manifest() {
     let env = create_bundle(Some("Famille Pierre-Léonard"));
     assert_eq!(env.status, Status::Ok);
-    assert_eq!(env.data["manifest"]["family"]["name"], "Famille Pierre-Léonard");
+    assert_eq!(
+        env.data["manifest"]["family"]["name"],
+        "Famille Pierre-Léonard"
+    );
 }
 
 // ---------- inspect ----------
@@ -119,12 +136,17 @@ fn export_bundle_produces_zip_with_manifest_and_schema() {
     let flat_json = serde_json::to_string(&created.data).unwrap();
     let exported = export_bundle(&flat_json);
     assert_eq!(exported.status, Status::Ok);
-    let b64 = exported.data["zip_base64"].as_str().expect("zip_base64 field");
+    let b64 = exported.data["zip_base64"]
+        .as_str()
+        .expect("zip_base64 field");
     let zip_bytes = BASE64.decode(b64).unwrap();
     assert!(exported.data["size_bytes"].as_u64().unwrap() > 0);
 
     let names = list_zip_names(&zip_bytes);
-    assert!(names.contains(&"manifest.json".to_string()), "names={names:?}");
+    assert!(
+        names.contains(&"manifest.json".to_string()),
+        "names={names:?}"
+    );
     assert!(names.contains(&"schema/axgf-1.0.schema.json".to_string()));
     assert!(names.contains(&"documents/index.json".to_string()));
 
@@ -133,7 +155,14 @@ fn export_bundle_produces_zip_with_manifest_and_schema() {
     let schema_bytes = read_zip_entry(&zip_bytes, "schema/axgf-1.0.schema.json").unwrap();
     let schema: Value = serde_json::from_slice(&schema_bytes).unwrap();
     let defs = schema["$defs"].as_object().unwrap();
-    for k in ["uuid", "axgf_date", "base_entity", "person", "manifest", "document"] {
+    for k in [
+        "uuid",
+        "axgf_date",
+        "base_entity",
+        "person",
+        "manifest",
+        "document",
+    ] {
         assert!(defs.contains_key(k), "embedded schema missing $defs/{k}");
     }
 }
@@ -149,7 +178,9 @@ fn export_bundle_recomputes_stats_before_writing() {
 
     let exp = export_bundle(&serde_json::to_string(&flat).unwrap());
     assert_eq!(exp.status, Status::Ok);
-    let zip_bytes = BASE64.decode(exp.data["zip_base64"].as_str().unwrap()).unwrap();
+    let zip_bytes = BASE64
+        .decode(exp.data["zip_base64"].as_str().unwrap())
+        .unwrap();
     let manifest_bytes = read_zip_entry(&zip_bytes, "manifest.json").unwrap();
     let manifest: Value = serde_json::from_slice(&manifest_bytes).unwrap();
     assert_eq!(manifest["stats"]["persons"], 2);
@@ -185,10 +216,17 @@ fn import_of_freshly_exported_bundle_yields_equivalent_flat_json() {
     let flat_str = serde_json::to_string(&flat).unwrap();
 
     let exp = export_bundle(&flat_str);
-    let zip_bytes = BASE64.decode(exp.data["zip_base64"].as_str().unwrap()).unwrap();
+    let zip_bytes = BASE64
+        .decode(exp.data["zip_base64"].as_str().unwrap())
+        .unwrap();
 
     let imp = import_bundle(&zip_bytes);
-    assert_eq!(imp.status, Status::Ok, "import failed: {:?}", imp.diagnostics);
+    assert_eq!(
+        imp.status,
+        Status::Ok,
+        "import failed: {:?}",
+        imp.diagnostics
+    );
 
     // Manifest survives with the right axgf version.
     assert_eq!(imp.data["manifest"]["axgf"], "1.0");
@@ -198,8 +236,14 @@ fn import_of_freshly_exported_bundle_yields_equivalent_flat_json() {
     assert_eq!(imp.data["manifest"]["stats"]["families"], 1);
     assert_eq!(imp.data["manifest"]["stats"]["events"], 1);
     // Entities themselves round-tripped.
-    assert_eq!(imp.data["persons"]["p1"]["identity"]["name"]["display"], "A");
-    assert_eq!(imp.data["families"]["f1"]["union"]["persons"][0]["person_id"], "p1");
+    assert_eq!(
+        imp.data["persons"]["p1"]["identity"]["name"]["display"],
+        "A"
+    );
+    assert_eq!(
+        imp.data["families"]["f1"]["union"]["persons"][0]["person_id"],
+        "p1"
+    );
     assert_eq!(imp.data["events"]["e1"]["date"]["value"], "1900");
 }
 
@@ -210,13 +254,14 @@ fn import_rejects_unsupported_spec_version() {
     {
         let cursor = std::io::Cursor::new(&mut buf);
         let mut zip = zip::ZipWriter::new(cursor);
-        let opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
+        let opts =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         zip.start_file("manifest.json", opts).unwrap();
         std::io::Write::write_all(
             &mut zip,
             br#"{"axgf":"9.9","created_at":"x","stats":{"persons":0}}"#,
-        ).unwrap();
+        )
+        .unwrap();
         zip.finish().unwrap();
     }
     let env = import_bundle(&buf);
@@ -248,24 +293,39 @@ fn import_preserves_attachments_and_vault_pages_round_trip() {
 
     let exp = export_bundle(&serde_json::to_string(&flat).unwrap());
     assert_eq!(exp.status, Status::Ok);
-    let zip_bytes = BASE64.decode(exp.data["zip_base64"].as_str().unwrap()).unwrap();
+    let zip_bytes = BASE64
+        .decode(exp.data["zip_base64"].as_str().unwrap())
+        .unwrap();
 
     // Attachments landed in the ZIP at their original paths.
     let names = list_zip_names(&zip_bytes);
     assert!(names.contains(&"documents/files/d1.txt".to_string()));
     assert!(names.contains(&"vault/wiki/persons/example.md".to_string()));
-    assert_eq!(read_zip_entry(&zip_bytes, "documents/files/d1.txt").unwrap(), b"Hello, AXGF!");
-    assert_eq!(read_zip_entry(&zip_bytes, "vault/wiki/persons/example.md").unwrap(),
-               b"# Example\nBody.");
+    assert_eq!(
+        read_zip_entry(&zip_bytes, "documents/files/d1.txt").unwrap(),
+        b"Hello, AXGF!"
+    );
+    assert_eq!(
+        read_zip_entry(&zip_bytes, "vault/wiki/persons/example.md").unwrap(),
+        b"# Example\nBody."
+    );
 
     // Now import and check they come back through the attachments map.
     let imp = import_bundle(&zip_bytes);
     assert_eq!(imp.status, Status::Ok);
     let att = &imp.data["attachments"];
-    assert_eq!(BASE64.decode(att["documents/files/d1.txt"].as_str().unwrap()).unwrap(),
-               b"Hello, AXGF!");
-    assert_eq!(BASE64.decode(att["vault/wiki/persons/example.md"].as_str().unwrap()).unwrap(),
-               b"# Example\nBody.");
+    assert_eq!(
+        BASE64
+            .decode(att["documents/files/d1.txt"].as_str().unwrap())
+            .unwrap(),
+        b"Hello, AXGF!"
+    );
+    assert_eq!(
+        BASE64
+            .decode(att["vault/wiki/persons/example.md"].as_str().unwrap())
+            .unwrap(),
+        b"# Example\nBody."
+    );
     // The document metadata came back via documents/index.json.
     assert_eq!(imp.data["documents"]["d1"]["filename"], "hello.txt");
 }

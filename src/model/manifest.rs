@@ -95,7 +95,9 @@ pub struct Stats {
     pub extra: Extra,
 }
 
-fn is_zero(n: &u64) -> bool { *n == 0 }
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
 
 /// Privacy flags declared by the exporter. Mirrors `manifest.privacy`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

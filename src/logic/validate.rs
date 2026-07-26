@@ -165,9 +165,7 @@ fn dangling_refs(b: &FlatBundle, known: &BTreeSet<String>, out: &mut Vec<Diagnos
             walk_ids(value, None, &mut refs);
             let mut seen_missing: BTreeSet<(String, String)> = BTreeSet::new();
             for (target, key) in refs {
-                if !known.contains(&target)
-                    && seen_missing.insert((key.clone(), target.clone()))
-                {
+                if !known.contains(&target) && seen_missing.insert((key.clone(), target.clone())) {
                     out.push(Diagnostic {
                         code: DiagnosticCode::DanglingReference,
                         severity: Severity::Warning,
@@ -405,11 +403,7 @@ fn parent_ids(f: &Value) -> Vec<String> {
         .and_then(Value::as_array)
         .map(|arr| {
             arr.iter()
-                .filter_map(|p| {
-                    p.get("person_id")
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                })
+                .filter_map(|p| p.get("person_id").and_then(Value::as_str).map(String::from))
                 .collect()
         })
         .unwrap_or_default()
@@ -420,11 +414,7 @@ fn child_ids(f: &Value) -> Vec<String> {
         .and_then(Value::as_array)
         .map(|arr| {
             arr.iter()
-                .filter_map(|c| {
-                    c.get("person_id")
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                })
+                .filter_map(|c| c.get("person_id").and_then(Value::as_str).map(String::from))
                 .collect()
         })
         .unwrap_or_default()

@@ -21,7 +21,9 @@ pub struct PlaceName {
     pub extra: Extra,
 }
 
-fn is_false(b: &bool) -> bool { !*b }
+fn is_false(b: &bool) -> bool {
+    !*b
+}
 
 /// Geographic coordinates of a place.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

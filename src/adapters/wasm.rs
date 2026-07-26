@@ -35,7 +35,9 @@ fn parse_policy(s: &str) -> Result<DeletePolicy, JsValue> {
         "reject" => Ok(DeletePolicy::Reject),
         "cascade" => Ok(DeletePolicy::Cascade),
         "orphan" => Ok(DeletePolicy::Orphan),
-        other => Err(JsValue::from_str(&format!("unknown delete policy {other:?}"))),
+        other => Err(JsValue::from_str(&format!(
+            "unknown delete policy {other:?}"
+        ))),
     }
 }
 

@@ -77,8 +77,7 @@ pub fn convert(gedcom_bytes: &[u8], default_confidence: f64, place_lang: &str) -
     for r in &records {
         if r.tag == "NOTE" {
             if let Some(x) = &r.xref {
-                ctx.note_map
-                    .insert(x.clone(), collected_text(r));
+                ctx.note_map.insert(x.clone(), collected_text(r));
             }
         }
     }
@@ -108,10 +107,7 @@ pub fn convert(gedcom_bytes: &[u8], default_confidence: f64, place_lang: &str) -
     if let Value::Object(ref mut m) = bundle.manifest {
         m.insert("stats".into(), stats);
         m.insert("updated_at".into(), Value::String(now_iso8601_utc()));
-        m.insert(
-            "compatibility".into(),
-            json!({"gedcom_source": "5.5.1"}),
-        );
+        m.insert("compatibility".into(), json!({"gedcom_source": "5.5.1"}));
     }
 
     let flat = serde_json::to_value(&bundle).unwrap_or(Value::Null);
@@ -313,7 +309,9 @@ fn convert_indi(r: &Record, bundle: &mut FlatBundle, ctx: &mut ConvertCtx) {
     let mut names_iter = r.children.iter().filter(|c| c.tag == "NAME");
     let primary = names_iter.next();
     let aliases: Vec<&Record> = names_iter.collect();
-    let display = primary.map(|n| gedcom_name_display(&n.value)).unwrap_or_default();
+    let display = primary
+        .map(|n| gedcom_name_display(&n.value))
+        .unwrap_or_default();
     let components = primary
         .map(|n| gedcom_name_components(&n.value))
         .unwrap_or_default();
@@ -405,7 +403,10 @@ fn pick_child_value<'a>(r: &'a Record, tag: &str) -> Option<&'a Record> {
 /// Turn a GEDCOM NAME value like `Jean /Pierre-Léonard/` into a
 /// display string with slashes stripped.
 fn gedcom_name_display(raw: &str) -> String {
-    raw.replace('/', "").split_whitespace().collect::<Vec<_>>().join(" ")
+    raw.replace('/', "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Extract given / family name components from a GEDCOM NAME value.
@@ -865,7 +866,11 @@ fn normalize_qualifier(s: &str) -> String {
         }
     }
     // Polish year suffix "R" / "ROKU" — strip.
-    out = out.replace(" ROKU", "").replace(" R.", "").trim().to_string();
+    out = out
+        .replace(" ROKU", "")
+        .replace(" R.", "")
+        .trim()
+        .to_string();
     // If it ends with a stray " R", drop it.
     if let Some(stripped) = out.strip_suffix(" R") {
         out = stripped.to_string();
@@ -910,10 +915,7 @@ fn try_parse_ymd(s: &str) -> (Option<String>, Option<i32>) {
             let month = month_number(parts[1]);
             let year: Option<i32> = parts[2].parse().ok();
             if let (Some(d), Some(m), Some(y)) = (day, month, year) {
-                return (
-                    Some(format!("{y:04}-{m:02}-{d:02}")),
-                    Some(y),
-                );
+                return (Some(format!("{y:04}-{m:02}-{d:02}")), Some(y));
             }
         }
         2 => {

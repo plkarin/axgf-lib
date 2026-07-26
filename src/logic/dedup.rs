@@ -186,11 +186,7 @@ fn is_ancestor(a: &str, b: &str, edges: &BTreeMap<String, BTreeSet<String>>) -> 
 
 /// True if `a` and `b` are both children of at least one common
 /// parent.
-fn shares_direct_parent(
-    a: &str,
-    b: &str,
-    edges: &BTreeMap<String, BTreeSet<String>>,
-) -> bool {
+fn shares_direct_parent(a: &str, b: &str, edges: &BTreeMap<String, BTreeSet<String>>) -> bool {
     let parents_of = |x: &str| -> BTreeSet<String> {
         edges
             .iter()
@@ -522,11 +518,7 @@ fn parent_ids(f: &Value) -> Vec<String> {
         .and_then(Value::as_array)
         .map(|arr| {
             arr.iter()
-                .filter_map(|p| {
-                    p.get("person_id")
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                })
+                .filter_map(|p| p.get("person_id").and_then(Value::as_str).map(String::from))
                 .collect()
         })
         .unwrap_or_default()
@@ -541,11 +533,7 @@ fn build_parent_of(b: &FlatBundle) -> BTreeMap<String, BTreeSet<String>> {
             .and_then(Value::as_array)
             .map(|arr| {
                 arr.iter()
-                    .filter_map(|c| {
-                        c.get("person_id")
-                            .and_then(Value::as_str)
-                            .map(String::from)
-                    })
+                    .filter_map(|c| c.get("person_id").and_then(Value::as_str).map(String::from))
                     .collect()
             })
             .unwrap_or_default();

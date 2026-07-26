@@ -109,9 +109,14 @@ fn unparseable_date_is_preserved_as_note_never_dropped() {
         .expect("Paul present");
     let bd = &paul["birth"]["date"];
     assert_eq!(bd["precision"], "unknown");
-    assert!(bd["value"].is_null(), "unparseable date value should be null");
-    assert_eq!(bd["note"], "bogus-date-value",
-               "unparseable dates must be preserved verbatim in the date.note field");
+    assert!(
+        bd["value"].is_null(),
+        "unparseable date value should be null"
+    );
+    assert_eq!(
+        bd["note"], "bogus-date-value",
+        "unparseable dates must be preserved verbatim in the date.note field"
+    );
 }
 
 #[test]
@@ -179,7 +184,12 @@ fn multiple_name_entries_become_alias_names() {
 fn occu_becomes_standalone_occupation_linked_to_person() {
     let env = convert();
     let b = bundle(&env);
-    let occ = b["occupations"].as_object().unwrap().values().next().unwrap();
+    let occ = b["occupations"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap();
     assert_eq!(occ["title"], "Instituteur");
     // person_id points to the person whose display is "Jean Pierre-Léonard".
     let pid = occ["person_id"].as_str().unwrap();
@@ -199,19 +209,30 @@ fn note_xref_ref_resolves_into_person_notes() {
         .find(|p| p["identity"]["name"]["display"] == "Jean Pierre-Léonard")
         .unwrap();
     let notes = jean["notes"].as_str().unwrap();
-    assert!(notes.contains("Referenced note body preserved."),
-            "resolved @N1@ body should be inlined; got: {notes:?}");
-    assert!(notes.contains("Note inline about Jean."),
-            "inline notes also included; got: {notes:?}");
+    assert!(
+        notes.contains("Referenced note body preserved."),
+        "resolved @N1@ body should be inlined; got: {notes:?}"
+    );
+    assert!(
+        notes.contains("Note inline about Jean."),
+        "inline notes also included; got: {notes:?}"
+    );
 }
 
 #[test]
 fn family_chil_preserves_pedi_adopted() {
     let env = convert();
-    let fam = bundle(&env)["families"].as_object().unwrap().values().next().unwrap();
+    let fam = bundle(&env)["families"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap();
     let child = &fam["children"].as_array().unwrap()[0];
-    assert!(child["note"].as_str().unwrap().contains("adopted"),
-            "PEDI adopted should be preserved on the child entry");
+    assert!(
+        child["note"].as_str().unwrap().contains("adopted"),
+        "PEDI adopted should be preserved on the child entry"
+    );
 }
 
 // ---------- encoding ----------

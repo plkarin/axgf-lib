@@ -475,9 +475,7 @@ fn validate_entity_in_isolation(kind: EntityKind, entity: &Value, id: &str) -> V
     out
 }
 
-fn entity_collections(
-    b: &FlatBundle,
-) -> [(EntityKind, &'static str, &BTreeMap<String, Value>); 8] {
+fn entity_collections(b: &FlatBundle) -> [(EntityKind, &'static str, &BTreeMap<String, Value>); 8] {
     [
         (EntityKind::Person, "persons", &b.persons),
         (EntityKind::Family, "families", &b.families),
