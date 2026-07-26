@@ -62,9 +62,23 @@ pub struct FlatBundle {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub places: BTreeMap<String, Value>,
     /// Document metadata entities keyed by lowercase UUID v4. Binary
-    /// payloads are handled at ZIP boundary time, not here.
+    /// payloads live in [`FlatBundle::attachments`], indexed by ZIP path
+    /// (e.g. `documents/files/{uuid}.pdf`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub documents: BTreeMap<String, Value>,
+
+    /// Auxiliary files that are part of the bundle but not modeled as
+    /// entities: document binary payloads under `documents/files/…`,
+    /// vault Markdown pages under `vault/…`, and any other files
+    /// present in the source ZIP. Keys are ZIP paths; values are
+    /// base64-encoded bytes.
+    ///
+    /// Populated by [`crate::import_bundle`] and written back verbatim
+    /// by [`crate::export_bundle`]. `manifest.json` and everything under
+    /// `schema/` and the eight entity directories are handled
+    /// structurally and MUST NOT appear here.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub attachments: BTreeMap<String, String>,
 
     /// Forward-compatibility bucket: any top-level field the current
     /// implementation does not understand round-trips unchanged.

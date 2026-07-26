@@ -31,6 +31,7 @@ jsonschema  = { version = "0.17", default-features = false }
 uuid        = { version = "1.6", features = ["v4", "serde"] }
 thiserror   = "1.0"
 base64      = "0.21"
+time        = { version = "0.3", default-features = false, features = ["formatting", "macros", "std"] }
 
 wasm-bindgen        = { version = "0.2", optional = true }
 serde-wasm-bindgen  = { version = "0.6", optional = true }
