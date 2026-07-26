@@ -58,7 +58,7 @@ fn now_iso8601_utc() -> String {
 /// Verify a manifest's `axgf` field is a supported spec version. On
 /// mismatch, returns an `UNSUPPORTED_SPEC_VERSION` envelope for the
 /// caller to bubble up.
-fn check_manifest_version(manifest: &Value) -> Result<(), Envelope> {
+pub(crate) fn check_manifest_version(manifest: &Value) -> Result<(), Envelope> {
     let axgf = manifest.get("axgf").and_then(Value::as_str);
     match axgf {
         Some(v) if SUPPORTED_SPEC_VERSIONS.contains(&v) => Ok(()),
@@ -77,7 +77,7 @@ fn check_manifest_version(manifest: &Value) -> Result<(), Envelope> {
 
 /// Parse a flat-bundle JSON string, or return an `INVALID_JSON` /
 /// `INVALID_BUNDLE_STRUCTURE` envelope.
-fn parse_flat(flat_json: &str) -> Result<FlatBundle, Envelope> {
+pub(crate) fn parse_flat(flat_json: &str) -> Result<FlatBundle, Envelope> {
     serde_json::from_str::<FlatBundle>(flat_json).map_err(|e| {
         Envelope::error(DiagnosticCode::InvalidJson, format!("cannot parse flat bundle: {e}"))
     })
