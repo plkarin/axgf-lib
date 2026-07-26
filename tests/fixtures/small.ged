@@ -1,0 +1,51 @@
+0 HEAD
+1 SOUR ax-genealogy-test
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Jean /Pierre-Léonard/
+1 NAME Jean-Baptiste /Pierre-Léonard/
+1 SEX M
+1 BIRT
+2 DATE 12 KWIETNIA 1923
+2 PLAC Saint-Denis, La Réunion
+1 DEAT
+2 DATE PRZED 1990
+1 OCCU Instituteur
+2 DATE 1948
+2 PLAC Saint-Denis, La Réunion
+1 NOTE @N1@
+1 NOTE Note inline about Jean.
+1 OBJE
+2 FILE documents/photo.jpg
+3 FORM jpg
+3 TITL Family photo (webtrees nesting)
+0 @I2@ INDI
+1 NAME Marie /Bernard/
+1 SEX F
+1 BIRT
+2 DATE OK 1925
+1 DEAT
+2 DATE PO 2000 R
+0 @I3@ INDI
+1 NAME Paul /Pierre-Léonard/
+1 SEX M
+1 BIRT
+2 DATE bogus-date-value
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 CHIL @I3@
+2 PEDI adopted
+1 MARR
+2 DATE 15 JUIN 1948
+2 PLAC Paris
+0 @N1@ NOTE Referenced note body preserved.
+0 @M1@ OBJE
+1 FORM pdf
+1 TITL A certificate
+1 FILE documents/certificate.pdf
+0 @S1@ SOUR
+1 TITL Family archive
+0 TRLR
