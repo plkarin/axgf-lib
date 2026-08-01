@@ -64,7 +64,7 @@ pub const CURRENT_SPEC_VERSION: &str = "1.0";
 // -------------------------------------------------------------------------
 
 use boundary::envelope::Envelope;
-use logic::crud::{DeletePolicy, EntityKind};
+pub use logic::crud::{DeletePolicy, EntityKind};
 
 /// Create a new, empty AXGF bundle as flat JSON.
 ///
