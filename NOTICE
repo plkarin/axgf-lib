@@ -1,0 +1,32 @@
+axgf-rs — Reference implementation of the Axiom Genealogy Format (AXGF) 1.0
+Copyright 2026 Pierre-Léonard Karin
+
+Licensed under the Apache License, Version 2.0 (the "License").
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+-------------------------------------------------------------------------------
+Third-party notice: bundled JSON schema
+-------------------------------------------------------------------------------
+
+This crate embeds `schema/axgf-1.0.schema.json` at compile time via
+`include_str!`. The schema is a vendored copy of the file published in the
+canonical specification repository:
+
+    https://github.com/plkarin/axgf-spec
+
+The AXGF specification (including its JSON Schema) is dedicated to the
+public domain under CC0 1.0 Universal:
+
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+The library code is licensed under Apache-2.0 (see LICENSE). The embedded
+schema remains CC0. Redistributing this crate is therefore governed by
+Apache-2.0 for the Rust code and CC0 for the schema file.

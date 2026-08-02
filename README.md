@@ -4,7 +4,8 @@
 
 **Official reference library for the [Axiom Genealogy Format (AXGF)](https://github.com/plkarin/axgf-spec)**
 
-[![Crate](https://img.shields.io/badge/crate-axgf--rs-667eea?style=flat-square)](https://github.com/plkarin/axgf-lib)
+[![Crates.io](https://img.shields.io/crates/v/axgf-rs.svg?style=flat-square)](https://crates.io/crates/axgf-rs)
+[![Docs.rs](https://img.shields.io/docsrs/axgf-rs?style=flat-square)](https://docs.rs/axgf-rs)
 [![License](https://img.shields.io/badge/license-Apache--2.0-43d9a2?style=flat-square)](./LICENSE)
 [![Spec](https://img.shields.io/badge/spec-AXGF_1.0-764ba2?style=flat-square)](https://github.com/plkarin/axgf-spec)
 [![Status](https://img.shields.io/badge/status-alpha-ffd93d?style=flat-square)](https://github.com/plkarin/axgf-lib/issues)
@@ -37,6 +38,32 @@ The crate is published as **`axgf-rs`**.
 │  one stateless core → WASM · native · mobile · C-FFI      │
 └──────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Installation
+
+Published on crates.io as **`axgf-rs`**. Documentation is on [docs.rs](https://docs.rs/axgf-rs).
+
+```sh
+cargo add axgf-rs
+```
+
+Or add it manually to `Cargo.toml`:
+
+```toml
+[dependencies]
+axgf-rs = "0.1"
+```
+
+Optional adapters are gated behind Cargo features (see the [Platform bindings](#platform-bindings) section for the full table):
+
+```toml
+[dependencies]
+axgf-rs = { version = "0.1", features = ["wasm"] }
+```
+
+The pre-1.0 version signals that the public API may still change. The AXGF **format** version and the crate **version** are independent — this crate targets AXGF 1.0.
 
 ---
 
