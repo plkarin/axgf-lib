@@ -3,14 +3,26 @@ name = "axgf-rs"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
-description = "Reference implementation of the Axiom Genealogy Format (AXGF) 1.0."
+description = "Reference implementation of the Axiom Genealogy Format (AXGF) 1.0 — a stateless JSON-boundary library for creating, validating, importing, exporting, and converting genealogy bundles (GEDCOM 5.5.1 supported)."
 license = "Apache-2.0"
 repository = "https://github.com/plkarin/axgf-lib"
-homepage = "https://github.com/plkarin/axgf-lib"
+homepage = "https://github.com/plkarin/axgf-spec"
 documentation = "https://docs.rs/axgf-rs"
 readme = "README.md"
-keywords = ["axgf", "genealogy", "gedcom", "family-tree"]
-categories = ["data-structures", "parser-implementations"]
+keywords = ["axgf", "genealogy", "gedcom", "family-tree", "family-history"]
+categories = ["data-structures", "parser-implementations", "encoding"]
+include = [
+    "src/**/*",
+    "schema/axgf-1.0.schema.json",
+    "schema/README.md",
+    "Cargo.toml",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SETUP.md",
+    "CHANGELOG.md",
+    "docs/**/*",
+]
 
 [lib]
 name = "axgf_rs"
