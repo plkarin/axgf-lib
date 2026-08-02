@@ -1,0 +1,55 @@
+name: schema-drift
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Weekly on Monday at 06:00 UTC — catches upstream changes that landed
+    # between library PRs.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Compare vendored schema against axgf-spec main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout axgf-lib
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Fetch upstream schema
+        run: |
+          curl --fail --silent --show-error --location \
+            --output /tmp/upstream.schema.json \
+            https://raw.githubusercontent.com/plkarin/axgf-spec/main/schema/axgf-1.0.schema.json
+
+      - name: Compare canonical forms
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, sys
+          def canon(path):
+              with open(path) as f:
+                  return hashlib.sha256(
+                      json.dumps(json.load(f), sort_keys=True,
+                                 separators=(",", ":")).encode()
+                  ).hexdigest()
+          vendored = canon("schema/axgf-1.0.schema.json")
+          upstream = canon("/tmp/upstream.schema.json")
+          print(f"vendored canonical sha256: {vendored}")
+          print(f"upstream canonical sha256: {upstream}")
+          if vendored != upstream:
+              print()
+              print("ERROR: vendored schema has drifted from axgf-spec main.")
+              print("Run scripts/sync-schema.sh, review the diff, and update")
+              print("library code if the spec changed in a way that affects it.")
+              print("Do not merge until this check is green.")
+              sys.exit(1)
+          print("OK: vendored schema matches upstream (canonical comparison).")
+          PY
