@@ -35,6 +35,49 @@
 //! - [`convert`] — Foreign-format converters (GEDCOM 5.5.1 → AXGF).
 //! - [`adapters`] — Thin per-target wrappers (rust, wasm, cffi, mobile) behind
 //!   feature flags.
+//!
+//! ## Minimal example
+//!
+//! Create an empty bundle, add a person, and validate the result. Every
+//! function takes and returns JSON, wrapped in a uniform
+//! [`boundary::envelope::Envelope`].
+//!
+//! ```
+//! use axgf_rs::{add_entity, create_bundle, validate, EntityKind};
+//! use axgf_rs::boundary::envelope::Status;
+//!
+//! // 1. Create an empty bundle. `data` is a serde_json::Value; convert to a
+//! //    string for the next call.
+//! let bundle = create_bundle(Some("Karin")).data.to_string();
+//!
+//! // 2. Add a minimal person. The library generates a UUID v4 if none given
+//! //    and fills in `type` and `axgf_version`. The envelope's `data` here
+//! //    is `{ "id": <uuid>, "bundle": <updated flat bundle> }`.
+//! let person = r#"{
+//!     "identity": {
+//!         "name":   {"display": "Jean Pierre-Léonard", "components": []},
+//!         "gender": {"value": "M"},
+//!         "is_living": true
+//!     }
+//! }"#;
+//! let added = add_entity(&bundle, EntityKind::Person, person);
+//! assert_eq!(added.status, Status::Ok);
+//!
+//! // 3. Structural + semantic validation over the updated bundle. Warnings
+//! //    are non-blocking, so `status == Ok` even if diagnostics are present.
+//! let updated_bundle = added.data["bundle"].to_string();
+//! let checked = validate(&updated_bundle);
+//! assert_eq!(checked.status, Status::Ok);
+//! ```
+//!
+//! ## Further reading
+//!
+//! - [`docs/API.md`] — a longer walk-through of every public function.
+//! - [`SETUP.md`] — build instructions and per-target adapter notes.
+//! - [AXGF specification] — the format itself.
+//!
+//! [`docs/API.md`]: https://github.com/plkarin/axgf-lib/blob/main/docs/API.md
+//! [`SETUP.md`]: https://github.com/plkarin/axgf-lib/blob/main/SETUP.md
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]

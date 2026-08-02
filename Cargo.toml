@@ -55,3 +55,11 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 [profile.release]
 lto           = "thin"
 codegen-units = 1
+
+# docs.rs build configuration. `all-features` documents every feature so
+# adapter modules (wasm, cffi, mobile) appear in the rendered docs. If a
+# feature ever fails to build on docs.rs, replace with
+# `features = ["gedcom"]` and note why here.
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
