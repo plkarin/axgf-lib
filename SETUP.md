@@ -199,18 +199,18 @@ cd e2e && cargo run && echo "regression: ok" || echo "regression: FAILED"
 
 ## 5. T19b - optional real-world GEDCOM test
 
-T19b runs automatically when a real GEDCOM file is present at the path
-configured at the top of `e2e/src/main.rs`:
+T19b converts a real GEDCOM file and validates the result. It is skipped
+cleanly when no file is provided - it never fails the suite.
 
-```rust
-let real_ged = "/path/to/your/tree2-fixed.ged";
+To enable it, point the `AXGF_E2E_GEDCOM` environment variable at a `.ged`
+file:
+
+```bash
+AXGF_E2E_GEDCOM=/path/to/your/tree.ged cargo run
 ```
 
-Update that constant to point to your own file. T19b is skipped cleanly
-when the file is absent - it does not fail.
-
-To produce a clean GEDCOM file from a raw export, use the deduplication
-tool in the `axgf-spec` repository:
+To produce a deduplicated GEDCOM from a raw export, use the tool in the
+axgf-spec repository:
 
 ```bash
 python3 tools/gedcom_dedup.py tree.ged -o tree-fixed.ged
