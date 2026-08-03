@@ -558,18 +558,33 @@ fn test_19_gedcom_conversion() {
     let env_v = parse(&validate(&data(&env).to_string()).to_json());
     check("T19 converted bundle passes validation", ok(&env_v),
         "converted bundle invalid");
-    let real_ged = "/home/cbrain/axgf-tools/tree2-fixed.ged";
-    if std::path::Path::new(real_ged).exists() {
-        let bytes = std::fs::read(real_ged).unwrap();
-        let env_r = parse(&convert_gedcom(&bytes, 0.8, "pl").to_json());
-        check("T19b real-world tree2-fixed.ged converts ok", ok(&env_r),
-            "real-world conversion failed");
-        let b_r: Value = serde_json::from_str(&data(&env_r).to_string()).unwrap();
-        check("T19b real-world: persons >= 760",
-            b_r["persons"].as_object().map(|m| m.len()).unwrap_or(0) >= 760,
-            "too few persons");
+    
+    // Optional real-world file. Set AXGF_E2E_GEDCOM to a .ged path to enable.
+    // Skipped cleanly when unset or absent - never a failure.
+    let real_ged = std::env::var("AXGF_E2E_GEDCOM")
+        .unwrap_or_else(|_| String::new());
+
+    if real_ged.is_empty() {
+        println!("[SKIPPED] T19b real-world GEDCOM \
+                  (set AXGF_E2E_GEDCOM=/path/to/file.ged to enable)");
+    } else if !std::path::Path::new(&real_ged).exists() {
+        println!("[SKIPPED] T19b real-world GEDCOM \
+                  (AXGF_E2E_GEDCOM points to a missing file: {real_ged})");
     } else {
-        println!("[SKIPPED] T19b real-world GEDCOM (file not found at {real_ged})");
+        let bytes = std::fs::read(&real_ged)
+            .expect("failed to read AXGF_E2E_GEDCOM file");
+        let env_r = parse(&convert_gedcom(&bytes, 0.8, "pl").to_json());
+        check("T19b real-world GEDCOM converts ok", ok(&env_r),
+              "real-world conversion failed");
+        let b_r: Value = serde_json::from_str(&data(&env_r).to_string()).unwrap();
+        let n = b_r["persons"].as_object().map(|m| m.len()).unwrap_or(0);
+        check("T19b real-world: at least 1 person converted", n >= 1,
+              "no persons converted");
+        println!("         (converted {n} persons from {real_ged})");
+
+        let env_v = parse(&validate(&data(&env_r).to_string()).to_json());
+        check("T19b real-world bundle passes validation", ok(&env_v),
+              "converted real-world bundle invalid");
     }
 }
 
