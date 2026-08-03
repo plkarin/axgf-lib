@@ -65,6 +65,22 @@ axgf-rs = { version = "0.1", features = ["wasm"] }
 
 The pre-1.0 version signals that the public API may still change. The AXGF **format** version and the crate **version** are independent — this crate targets AXGF 1.0.
 
+### Command-line binary
+
+The same core is also shipped as a standalone `axgf` executable behind the
+`cli` feature. Every V1 API function is a subcommand; each prints the
+uniform envelope on stdout so calls compose in a shell pipeline.
+
+```sh
+cargo install axgf-rs --features cli
+axgf create --family-name "Karin" | jq .data
+axgf validate --input bundle.json     # exit 2 on error-severity diagnostics
+axgf convert-gedcom --input tree.ged --confidence 0.8 --place-lang pl
+```
+
+Pre-built binaries for Linux, macOS, and Windows are attached to each
+tagged release on GitHub.
+
 ---
 
 ## Design contract

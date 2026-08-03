@@ -5,6 +5,19 @@ All notable changes to `axgf-rs` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`axgf` command-line interface** behind the new `cli` Cargo feature.
+  One subcommand per V1 boundary function (`create`, `import`, `export`,
+  `inspect`, `validate`, `add`, `update`, `delete`, `dedup`,
+  `convert-gedcom`); every subcommand emits the same JSON envelope on
+  stdout and returns the operation's status through the process exit code
+  (0 = ok, 1 = refused, 2 = `validate` reported error-severity
+  diagnostics). Bundle inputs accept `-` to mean stdin so calls compose
+  in a shell pipeline. Install with `cargo install axgf-rs --features cli`.
+
 ## [0.1.0] — 2026-08-02
 
 First public release on crates.io. This is a **0.x release**: the API is

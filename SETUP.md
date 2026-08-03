@@ -237,6 +237,11 @@ Both must pass. A failure in either blocks release.
 # Default build (includes GEDCOM conversion)
 cargo build
 
+# CLI binary (built as target/release/axgf)
+cargo build --features cli --release
+# Or install directly from crates.io:
+cargo install axgf-rs --features cli
+
 # WebAssembly
 rustup target add wasm32-unknown-unknown
 cargo build --target wasm32-unknown-unknown --features wasm
@@ -249,6 +254,16 @@ cargo build --features cffi --release
 
 # Mobile bindings via UniFFI
 cargo build --features mobile
+```
+
+### CLI tests
+
+The `tests/cli.rs` suite spawns the freshly-built `axgf` binary and asserts
+on its stdout envelope; the file is elided when the `cli` feature is off, so
+plain `cargo test` keeps the 82-test baseline unchanged. To include it:
+
+```bash
+cargo test --features cli    # baseline + 14 CLI integration tests
 ```
 
 ---
