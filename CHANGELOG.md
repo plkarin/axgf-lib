@@ -68,8 +68,47 @@ existing library consumers upgrade transparently.
   section per subcommand with real captured output, entity-kind
   vocabulary, and scripting patterns (`jq` pipelines + CI gates).
 
+### Fixed
+
+- **Nameless persons no longer emit an empty `display` string** that
+  fails `axgf_name.display` (`minLength: 1`). GEDCOM `INDI` records
+  without a usable `NAME` now render as `"display": "[Unknown]"` per
+  spec §4.1.1; `components` stays empty rather than fabricating a
+  synthetic name component.
+- **Bare `1 OCCU` tags with no value are skipped** instead of emitting
+  an occupation with `"title": ""` (fails `occupation.title` minLength
+  1). A `GEDCOM_UNRECOGNIZED_TAG` warning names the source `INDI`
+  xref so the omission is visible rather than silent.
+- **Marriage events without a `DATE` no longer emit `date.value: ""`**
+  (which fails the `iso8601` string pattern). The MARR event still
+  carries `date` — required by the schema — but with only
+  `precision: "unknown"`; the `value` key is omitted entirely, the
+  same treatment already applied to unparseable dates in 0.2.0.
+- **Empty `FAM` records** (no `HUSB`/`WIFE`/`CHIL`, seen occasionally
+  as leftover stubs after deletions in real exports) are dropped with
+  a `GEDCOM_UNRECOGNIZED_TAG` warning naming the xref, instead of
+  producing a family entity that fails validation on both counts.
+- Cumulative effect measured on a real-world 767-person webtrees
+  export (`tests/fixtures/tree.ged`): 44 → 0 `SCHEMA_VALIDATION_FAILED`
+  warnings. A new regression test,
+  `converted_real_world_fixture_has_zero_schema_warnings` in
+  `tests/gedcom_convert.rs`, guards this end-to-end so the class of
+  bug can't return unnoticed.
+
 ### Changed
 
+- **`family.union` is now individually optional.** A family with only
+  `children` — a *sibling group* whose parents are unknown — is a
+  real and common genealogical situation (GEDCOM `FAM` records with
+  only `CHIL` entries), previously forced into an invalid
+  "marriage of zero persons" by the schema requiring `union`. The
+  spec (axgf-spec 1.0, §4.2.3) now requires **at least one** of
+  `union` or `children`; an entirely empty family remains invalid.
+  The GEDCOM converter emits sibling groups with no `union` block,
+  and `docs/API.md → update_entity → Demo E` documents the
+  read-modify-write recovery pattern for adding parents later
+  without dropping the children (covered by
+  `tests/crud.rs::family_gains_union_later_without_losing_children`).
 - **`cli` is now a default Cargo feature.** Plain `cargo install
   axgf-rs` produces the `axgf` binary; library consumers who want to
   avoid the `clap` dependency opt out with

@@ -15,7 +15,7 @@
 
 use axgf_rs::boundary::envelope::{Envelope, Status};
 use axgf_rs::logic::crud::{DeletePolicy, EntityKind};
-use axgf_rs::{add_entity, create_bundle, delete_entity, update_entity};
+use axgf_rs::{add_entity, create_bundle, delete_entity, update_entity, validate};
 use serde_json::{json, Value};
 
 fn to_str(v: &Value) -> String {
@@ -361,4 +361,105 @@ fn crud_rejects_unsupported_spec_version() {
     );
     assert_eq!(e.status, Status::Error);
     assert_eq!(e.diagnostics[0].code.as_str(), "UNSUPPORTED_SPEC_VERSION");
+}
+
+// ---------- sibling group recovery (spec §4.2.3) ----------
+
+// A researcher creates a family with only children (parents unknown).
+// Later they discover the parents and add a union via update_entity.
+// Because update is a full replace, the caller MUST read-modify-write:
+// read the existing family, add the union, send the whole object back.
+// Constructing a fresh family without carrying the children forward
+// would silently drop them.
+//
+// See docs/API.md → update_entity → Demo E for the pattern.
+#[test]
+fn family_gains_union_later_without_losing_children() {
+    let mut b = create_bundle(None).data;
+    let fam = "aaaa1234-e29b-41d4-a716-446655440777";
+    let c1 = "550e8400-e29b-41d4-a716-446655440101";
+    let c2 = "550e8400-e29b-41d4-a716-446655440102";
+    let c3 = "550e8400-e29b-41d4-a716-446655440103";
+    let c4 = "550e8400-e29b-41d4-a716-446655440104";
+    let p1 = "550e8400-e29b-41d4-a716-446655440201";
+    let p2 = "550e8400-e29b-41d4-a716-446655440202";
+
+    // Seed persons (four siblings + two later-discovered parents) so
+    // referential integrity is intact.
+    b["persons"] = json!({
+        c1: minimal_person_json(Some(c1), "Sibling One"),
+        c2: minimal_person_json(Some(c2), "Sibling Two"),
+        c3: minimal_person_json(Some(c3), "Sibling Three"),
+        c4: minimal_person_json(Some(c4), "Sibling Four"),
+        p1: minimal_person_json(Some(p1), "Parent One"),
+        p2: minimal_person_json(Some(p2), "Parent Two"),
+    });
+
+    // Step 1: create a sibling-group family — children only, no union.
+    let sibling_group = json!({
+        "id": fam, "type": "family", "axgf_version": "1.0",
+        "children": [
+            {"person_id": c1, "birth_order": 1},
+            {"person_id": c2, "birth_order": 2},
+            {"person_id": c3, "birth_order": 3},
+            {"person_id": c4, "birth_order": 4},
+        ]
+    });
+    let env = add_entity(&to_str(&b), EntityKind::Family, &to_str(&sibling_group));
+    assert_eq!(env.status, Status::Ok);
+    let with_family = bundle_of(&env).clone();
+
+    // Validation: no schema warnings — the spec permits union-less families.
+    let v1 = validate(&to_str(&with_family));
+    assert!(
+        !v1.diagnostics
+            .iter()
+            .any(|d| d.code.as_str() == "SCHEMA_VALIDATION_FAILED"),
+        "sibling group should validate cleanly; got {:?}",
+        v1.diagnostics
+    );
+
+    // Snapshot children so we can prove nothing was dropped.
+    let original_children = with_family["families"][fam]["children"].clone();
+    assert_eq!(original_children.as_array().unwrap().len(), 4);
+
+    // Step 2: read the family, add the union, write it back.
+    // THIS is the recovery pattern — a fresh construction would silently
+    // drop the children because update is a full replace.
+    let mut merged = with_family["families"][fam].clone();
+    merged["union"] = json!({
+        "type": "marriage",
+        "persons": [
+            {"person_id": p1, "role": "spouse"},
+            {"person_id": p2, "role": "spouse"},
+        ]
+    });
+
+    let env2 = update_entity(&to_str(&with_family), EntityKind::Family, &to_str(&merged));
+    assert_eq!(env2.status, Status::Ok);
+    let after = bundle_of(&env2);
+
+    // Family id unchanged.
+    assert_eq!(after["families"][fam]["id"], fam);
+    // Union now present with two spouses.
+    let persons = after["families"][fam]["union"]["persons"]
+        .as_array()
+        .unwrap();
+    assert_eq!(persons.len(), 2);
+    // Children survived intact — same ids, same order, same length.
+    let final_children = &after["families"][fam]["children"];
+    assert_eq!(
+        final_children, &original_children,
+        "children array must be byte-for-byte unchanged after gaining a union"
+    );
+
+    // Validation: still no schema warnings after the update.
+    let v2 = validate(&to_str(after));
+    assert!(
+        !v2.diagnostics
+            .iter()
+            .any(|d| d.code.as_str() == "SCHEMA_VALIDATION_FAILED"),
+        "family with union+children must validate cleanly; got {:?}",
+        v2.diagnostics
+    );
 }

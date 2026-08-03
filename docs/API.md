@@ -724,6 +724,61 @@ deleted.*
 }
 ```
 
+#### Demo E - a sibling group gains its parents
+
+*Reproduces: an imported branch cut off at the top, four siblings whose
+parents are unknown. Spec §4.2.3 permits a family with `children` and no
+`union`. A researcher later discovers the parents and needs to add a `union`
+block **without losing the children or their ids**.*
+
+*Why this demo exists*: `update_entity` is a **full replace**, not a patch.
+The caller MUST read the existing family, add the new `union` block, and
+send the merged object back. Constructing a fresh family with only the
+newly-discovered union would silently drop the four children — a failure
+mode that would corrupt the archive quietly, with no error. This is why
+the read-modify-write pattern from Demo A is non-negotiable when growing
+an entity: fetch first, mutate, then write.*
+
+```rust
+use axgf_rs::{update_entity, EntityKind};
+use serde_json::json;
+
+// The sibling group was recorded as a union-less family earlier.
+let bundle: serde_json::Value = serde_json::from_str(&flat)?;
+
+// STEP 1 — read the existing family. Do NOT rebuild it from scratch.
+let mut family = bundle["families"][family_id].clone();
+
+// STEP 2 — add the newly discovered union. Children stay exactly as
+// they were: same ids, same birth_order, same array length.
+family["union"] = json!({
+    "type": "marriage",
+    "persons": [
+        { "person_id": father_id, "role": "spouse" },
+        { "person_id": mother_id, "role": "spouse" },
+    ]
+});
+
+// STEP 3 — write the merged object back.
+let flat = update_entity(&flat, EntityKind::Family, &family.to_string())
+    .data["bundle"].to_string();
+```
+
+**Anti-pattern — do not do this.** The children silently vanish because
+update is a full replace and the fresh object never carried them:
+
+```rust
+// WRONG: constructs a fresh family object with only the union.
+// The four children are gone from the archive after this call.
+let fresh = json!({
+    "id": family_id, "type": "family", "axgf_version": "1.0",
+    "union": { "type": "marriage", "persons": [ /* ... */ ] }
+});
+update_entity(&flat, EntityKind::Family, &fresh.to_string());
+```
+
+Covered by `tests/crud.rs::family_gains_union_later_without_losing_children`.
+
 ---
 
 ### `delete_entity(flat, kind, id, policy) -> Envelope`

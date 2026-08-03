@@ -309,9 +309,14 @@ fn convert_indi(r: &Record, bundle: &mut FlatBundle, ctx: &mut ConvertCtx) {
     let mut names_iter = r.children.iter().filter(|c| c.tag == "NAME");
     let primary = names_iter.next();
     let aliases: Vec<&Record> = names_iter.collect();
+    // Spec §4.1.1: an unknown identity uses a bracketed placeholder
+    // rather than an empty display (schema §3.2 axgf_name.display has
+    // minLength 1). Do not invent components — leave the array empty
+    // so consumers can still detect that no real name was recorded.
     let display = primary
         .map(|n| gedcom_name_display(&n.value))
-        .unwrap_or_default();
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| "[Unknown]".to_string());
     let components = primary
         .map(|n| gedcom_name_components(&n.value))
         .unwrap_or_default();
@@ -363,14 +368,27 @@ fn convert_indi(r: &Record, bundle: &mut FlatBundle, ctx: &mut ConvertCtx) {
     }
 
     // OCCU children → standalone Occupation entities.
+    // A bare `1 OCCU` with no value carries no information; the
+    // schema's `occupation.title` requires minLength 1 anyway. Skip
+    // it and record a diagnostic so the omission is visible.
     for occu in r.children.iter().filter(|c| c.tag == "OCCU") {
+        let title = occu.value.trim();
+        if title.is_empty() {
+            ctx.diagnostics.push(Diagnostic {
+                code: DiagnosticCode::GedcomUnrecognizedTag,
+                severity: Severity::Warning,
+                message: format!("skipping empty OCCU tag on person {xref}"),
+                entity_ref: None,
+            });
+            continue;
+        }
         let occ_id = Uuid::new_v4().to_string();
         let mut occ = Map::new();
         occ.insert("id".into(), Value::String(occ_id.clone()));
         occ.insert("type".into(), Value::String("occupation".into()));
         occ.insert("axgf_version".into(), Value::String("1.0".into()));
         occ.insert("person_id".into(), Value::String(id.clone()));
-        occ.insert("title".into(), Value::String(occu.value.clone()));
+        occ.insert("title".into(), Value::String(title.to_string()));
         occ.insert("confidence".into(), json!(ctx.default_confidence));
         // DATE nested → valid_from/valid_until (single DATE → valid_from)
         if let Some(date) = occu.children.iter().find(|c| c.tag == "DATE") {
@@ -647,55 +665,78 @@ fn convert_fam(r: &Record, bundle: &mut FlatBundle, ctx: &mut ConvertCtx) {
         }
     }
 
-    let mut union = Map::new();
-    union.insert("type".into(), Value::String("marriage".into()));
-    union.insert("persons".into(), Value::Array(persons.clone()));
-
-    let mut event_id: Option<String> = None;
-    if let Some(marr) = r.children.iter().find(|c| c.tag == "MARR") {
-        let mut start = Map::new();
-        if let Some(d) = marr.children.iter().find(|c| c.tag == "DATE") {
-            start.insert("date".into(), parse_gedcom_date(&d.value));
-        }
-        if let Some(pl) = marr.children.iter().find(|c| c.tag == "PLAC") {
-            let pid = ensure_place(&pl.value, bundle, ctx);
-            start.insert("place_id".into(), Value::String(pid));
-        }
-        // Create standalone marriage event.
-        let eid = Uuid::new_v4().to_string();
-        let mut ev = Map::new();
-        ev.insert("id".into(), Value::String(eid.clone()));
-        ev.insert("type".into(), Value::String("event".into()));
-        ev.insert("axgf_version".into(), Value::String("1.0".into()));
-        ev.insert("category".into(), Value::String("marriage".into()));
-        if let Some(d) = start.get("date") {
-            ev.insert("date".into(), d.clone());
-        } else {
-            ev.insert("date".into(), json!({"value": "", "precision": "unknown"}));
-        }
-        if let Some(p) = start.get("place_id") {
-            ev.insert("place_id".into(), p.clone());
-        }
-        let mut parts: Vec<Value> = Vec::new();
-        for p in &persons {
-            if let Some(pid) = p.get("person_id").and_then(Value::as_str) {
-                parts.push(json!({"entity_type":"person","entity_id":pid,"role":"spouse"}));
-            }
-        }
-        parts.push(json!({"entity_type": "family", "entity_id": &id, "role": "created"}));
-        ev.insert("participants".into(), Value::Array(parts));
-        ev.insert("confidence".into(), json!(ctx.default_confidence));
-        bundle.events.insert(eid.clone(), Value::Object(ev));
-        event_id = Some(eid.clone());
-        start.insert("event_id".into(), Value::String(eid));
-        union.insert("start".into(), Value::Object(start));
+    // A FAM record with neither spouses nor children carries no
+    // family relationship at all (some sources leave stray FAM stubs
+    // after deletions). Skip it — the schema requires at least one
+    // of `union` or `children` — and emit a diagnostic so it is not
+    // silent.
+    if persons.is_empty() && children.is_empty() {
+        ctx.diagnostics.push(Diagnostic {
+            code: DiagnosticCode::GedcomUnrecognizedTag,
+            severity: Severity::Warning,
+            message: format!("skipping empty FAM record {xref} with no spouses and no children"),
+            entity_ref: None,
+        });
+        return;
     }
 
+    // Spec §4.2.3: a FAM with only CHIL entries is a sibling group —
+    // parents unknown. Emit the family without a union rather than
+    // "a marriage of zero persons". A researcher adds the union later
+    // via read-modify-write on update_entity (see docs/API.md Demo E).
     let mut fam = Map::new();
     fam.insert("id".into(), Value::String(id.clone()));
     fam.insert("type".into(), Value::String("family".into()));
     fam.insert("axgf_version".into(), Value::String("1.0".into()));
-    fam.insert("union".into(), Value::Object(union));
+
+    if !persons.is_empty() {
+        let mut union = Map::new();
+        union.insert("type".into(), Value::String("marriage".into()));
+        union.insert("persons".into(), Value::Array(persons.clone()));
+
+        if let Some(marr) = r.children.iter().find(|c| c.tag == "MARR") {
+            let mut start = Map::new();
+            if let Some(d) = marr.children.iter().find(|c| c.tag == "DATE") {
+                start.insert("date".into(), parse_gedcom_date(&d.value));
+            }
+            if let Some(pl) = marr.children.iter().find(|c| c.tag == "PLAC") {
+                let pid = ensure_place(&pl.value, bundle, ctx);
+                start.insert("place_id".into(), Value::String(pid));
+            }
+            // Create standalone marriage event.
+            let eid = Uuid::new_v4().to_string();
+            let mut ev = Map::new();
+            ev.insert("id".into(), Value::String(eid.clone()));
+            ev.insert("type".into(), Value::String("event".into()));
+            ev.insert("axgf_version".into(), Value::String("1.0".into()));
+            ev.insert("category".into(), Value::String("marriage".into()));
+            if let Some(d) = start.get("date") {
+                ev.insert("date".into(), d.clone());
+            } else {
+                // event.date is required by the schema, but axgf_date.value
+                // is not — omit `value` entirely rather than writing "".
+                ev.insert("date".into(), json!({"precision": "unknown"}));
+            }
+            if let Some(p) = start.get("place_id") {
+                ev.insert("place_id".into(), p.clone());
+            }
+            let mut parts: Vec<Value> = Vec::new();
+            for p in &persons {
+                if let Some(pid) = p.get("person_id").and_then(Value::as_str) {
+                    parts.push(json!({"entity_type":"person","entity_id":pid,"role":"spouse"}));
+                }
+            }
+            parts.push(json!({"entity_type": "family", "entity_id": &id, "role": "created"}));
+            ev.insert("participants".into(), Value::Array(parts));
+            ev.insert("confidence".into(), json!(ctx.default_confidence));
+            bundle.events.insert(eid.clone(), Value::Object(ev));
+            start.insert("event_id".into(), Value::String(eid));
+            union.insert("start".into(), Value::Object(start));
+        }
+
+        fam.insert("union".into(), Value::Object(union));
+    }
+
     if !children.is_empty() {
         fam.insert("children".into(), Value::Array(children));
     }
@@ -703,8 +744,6 @@ fn convert_fam(r: &Record, bundle: &mut FlatBundle, ctx: &mut ConvertCtx) {
     if !notes.is_empty() {
         fam.insert("notes".into(), Value::String(notes));
     }
-    // Silence unused_variables warning; event_id is captured inside union.start already.
-    let _ = event_id;
 
     bundle.families.insert(id, Value::Object(fam));
 }
@@ -765,11 +804,16 @@ fn ensure_place(raw: &str, bundle: &mut FlatBundle, ctx: &mut ConvertCtx) -> Str
 
 /// Parse a GEDCOM DATE value into an AXGF `axgf_date` object. Never
 /// fails: unparseable dates are preserved verbatim in the `note`
-/// field with `precision: "unknown"`.
+/// field with `precision: "unknown"` and no `value`.
+///
+/// Range shapes (BEF/AFT/BET…AND) follow schema `$defs.axgf_date`:
+/// the outer date carries `precision: "unknown"` and no `value`;
+/// the `range` object holds `earliest` and/or `latest` as nested
+/// full `axgf_date` objects (§5.2.3).
 fn parse_gedcom_date(raw: &str) -> Value {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return json!({"value": null, "precision": "unknown"});
+        return json!({"precision": "unknown"});
     }
     let upper = normalize_qualifier(trimmed);
 
@@ -778,34 +822,25 @@ fn parse_gedcom_date(raw: &str) -> Value {
         // BET <a> AND <b>  (may also appear in other languages, but all normalise
         // to BET…AND at this point via normalize_qualifier).
         if let Some((a, b)) = split_range(rest) {
-            let (av, ay) = try_parse_ymd(&a);
-            let (bv, by) = try_parse_ymd(&b);
             return json!({
-                "value": av.clone().unwrap_or_default(),
-                "precision": "range",
+                "precision": "unknown",
                 "range": {
-                    "start": av.or(Some(a.clone())).unwrap_or(a),
-                    "end":   bv.or(Some(b.clone())).unwrap_or(b),
-                    "start_year": ay,
-                    "end_year":   by
+                    "earliest": bound_date(&a),
+                    "latest":   bound_date(&b)
                 }
             });
         }
     }
     if let Some(rest) = strip_prefix_ci(&upper, "BEF ") {
-        let (v, y) = try_parse_ymd(rest);
         return json!({
-            "value": v.clone().unwrap_or(rest.to_string()),
-            "precision": "range",
-            "range": {"end": v.unwrap_or(rest.to_string()), "end_year": y}
+            "precision": "unknown",
+            "range": {"latest": bound_date(rest)}
         });
     }
     if let Some(rest) = strip_prefix_ci(&upper, "AFT ") {
-        let (v, y) = try_parse_ymd(rest);
         return json!({
-            "value": v.clone().unwrap_or(rest.to_string()),
-            "precision": "range",
-            "range": {"start": v.unwrap_or(rest.to_string()), "start_year": y}
+            "precision": "unknown",
+            "range": {"earliest": bound_date(rest)}
         });
     }
     if let Some(rest) = strip_prefix_ci(&upper, "ABT ") {
@@ -826,7 +861,24 @@ fn parse_gedcom_date(raw: &str) -> Value {
         return json!({"value": val, "precision": precision});
     }
     // Unparseable — preserve as a note per the module contract.
-    json!({"value": null, "precision": "unknown", "note": raw.to_string()})
+    json!({"precision": "unknown", "note": raw.to_string()})
+}
+
+/// Build a nested `axgf_date` for use inside `range.earliest` or
+/// `range.latest`. Falls back to `precision: "unknown"` with the raw
+/// text in `note` when the bound cannot be parsed.
+fn bound_date(raw: &str) -> Value {
+    let (v, _y) = try_parse_ymd(raw);
+    if let Some(val) = v {
+        let precision = match val.matches('-').count() {
+            2 => "exact",
+            1 => "month",
+            _ => "year",
+        };
+        json!({"value": val, "precision": precision})
+    } else {
+        json!({"precision": "unknown", "note": raw.trim().to_string()})
+    }
 }
 
 /// Uppercase + English-alias any localised qualifier. Preserves the
@@ -957,5 +1009,92 @@ fn month_number(m: &str) -> Option<u32> {
             Some(12)
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod date_shape_tests {
+    use super::parse_gedcom_date;
+    use serde_json::json;
+
+    // Schema contract (§5.2.1, §5.2.3): ranged dates have
+    // `precision: "unknown"`, no top-level `value`, and use
+    // `earliest` / `latest` inside `range` (each a full axgf_date).
+
+    #[test]
+    fn bet_and_produces_earliest_and_latest() {
+        let d = parse_gedcom_date("BET 1920 AND 1925");
+        assert_eq!(
+            d,
+            json!({
+                "precision": "unknown",
+                "range": {
+                    "earliest": {"value": "1920", "precision": "year"},
+                    "latest":   {"value": "1925", "precision": "year"}
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn bef_produces_latest_only() {
+        let d = parse_gedcom_date("BEF 1990");
+        assert_eq!(
+            d,
+            json!({
+                "precision": "unknown",
+                "range": {"latest": {"value": "1990", "precision": "year"}}
+            })
+        );
+    }
+
+    #[test]
+    fn aft_produces_earliest_only() {
+        let d = parse_gedcom_date("AFT 2000");
+        assert_eq!(
+            d,
+            json!({
+                "precision": "unknown",
+                "range": {"earliest": {"value": "2000", "precision": "year"}}
+            })
+        );
+    }
+
+    #[test]
+    fn polish_between_maps_to_earliest_latest() {
+        // MIĘDZY 1920 I 1925 → BET 1920 AND 1925
+        let d = parse_gedcom_date("MIĘDZY 1920 I 1925");
+        assert_eq!(d["precision"], "unknown");
+        assert_eq!(d["range"]["earliest"]["value"], "1920");
+        assert_eq!(d["range"]["latest"]["value"], "1925");
+    }
+
+    #[test]
+    fn unparseable_omits_value_but_keeps_note() {
+        let d = parse_gedcom_date("bogus-date-value");
+        assert_eq!(d["precision"], "unknown");
+        assert!(
+            d.get("value").is_none(),
+            "unparseable dates must omit `value` (schema types it as string)"
+        );
+        assert_eq!(d["note"], "bogus-date-value");
+    }
+
+    #[test]
+    fn empty_input_omits_value() {
+        let d = parse_gedcom_date("");
+        assert_eq!(d["precision"], "unknown");
+        assert!(d.get("value").is_none());
+        assert!(d.get("note").is_none());
+    }
+
+    #[test]
+    fn month_bounds_carry_finer_precision() {
+        // Ensure `bound_date` picks up richer precision when parseable.
+        let d = parse_gedcom_date("BET APR 1920 AND 12 MAY 1925");
+        assert_eq!(d["range"]["earliest"]["value"], "1920-04");
+        assert_eq!(d["range"]["earliest"]["precision"], "month");
+        assert_eq!(d["range"]["latest"]["value"], "1925-05-12");
+        assert_eq!(d["range"]["latest"]["precision"], "exact");
     }
 }

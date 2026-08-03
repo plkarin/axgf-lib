@@ -18,7 +18,7 @@
 //! - Encoding auto-detect picks up on the UTF-8 BOM.
 
 use axgf_rs::boundary::envelope::Status;
-use axgf_rs::convert_gedcom;
+use axgf_rs::{convert_gedcom, validate};
 use serde_json::Value;
 
 fn load_fixture() -> Vec<u8> {
@@ -81,12 +81,18 @@ fn polish_qualifiers_map_to_range_and_circa() {
     assert_eq!(birth["value"], "1925");
     assert_eq!(birth["circa"], true);
     assert_eq!(birth["precision"], "year");
-    // Marie death "PO 2000 R" → after year 2000 → range with start.
+    // Marie death "PO 2000 R" → after year 2000 → range with earliest.
     let death = &marie["death"]["date"];
-    assert_eq!(death["precision"], "range");
-    assert_eq!(death["range"]["start"], "2000");
+    assert_eq!(death["precision"], "unknown");
+    assert!(
+        death.get("value").is_none(),
+        "ranged date must not carry a top-level value"
+    );
+    assert_eq!(death["range"]["earliest"]["value"], "2000");
+    assert_eq!(death["range"]["earliest"]["precision"], "year");
+    assert!(death["range"].get("latest").is_none());
 
-    // Jean (I1) death "PRZED 1990" → before year 1990 → range with end.
+    // Jean (I1) death "PRZED 1990" → before year 1990 → range with latest.
     let jean = b["persons"]
         .as_object()
         .unwrap()
@@ -94,8 +100,14 @@ fn polish_qualifiers_map_to_range_and_circa() {
         .find(|p| p["identity"]["name"]["display"] == "Jean Pierre-Léonard")
         .expect("Jean present");
     let jd = &jean["death"]["date"];
-    assert_eq!(jd["precision"], "range");
-    assert_eq!(jd["range"]["end"], "1990");
+    assert_eq!(jd["precision"], "unknown");
+    assert!(
+        jd.get("value").is_none(),
+        "ranged date must not carry a top-level value"
+    );
+    assert_eq!(jd["range"]["latest"]["value"], "1990");
+    assert_eq!(jd["range"]["latest"]["precision"], "year");
+    assert!(jd["range"].get("earliest").is_none());
 }
 
 #[test]
@@ -110,8 +122,8 @@ fn unparseable_date_is_preserved_as_note_never_dropped() {
     let bd = &paul["birth"]["date"];
     assert_eq!(bd["precision"], "unknown");
     assert!(
-        bd["value"].is_null(),
-        "unparseable date value should be null"
+        bd.get("value").is_none(),
+        "unparseable dates must omit `value` (schema types it as string, not nullable)"
     );
     assert_eq!(
         bd["note"], "bogus-date-value",
@@ -245,4 +257,44 @@ fn utf8_bom_is_detected_and_stripped() {
     assert_eq!(env.status, Status::Ok);
     // Still parses the same number of INDIs.
     assert_eq!(bundle(&env)["persons"].as_object().unwrap().len(), 3);
+}
+
+// ---------- regression guard ----------
+
+// A real webtrees export of ~767 persons with Polish date qualifiers,
+// nameless INDIs, bare OCCU tags, parentless sibling groups, and stray
+// FAM stubs. These are the exact conditions that hid bugs 1–7. The
+// three-person fixture would not have caught any of them.
+//
+// The bundle produced from this fixture MUST validate with zero
+// SCHEMA_VALIDATION_FAILED diagnostics. Any regression in the
+// converter that emits schema-invalid output on real-world input
+// will fail this test.
+#[test]
+fn converted_real_world_fixture_has_zero_schema_warnings() {
+    let bytes = std::fs::read("tests/fixtures/tree.ged").expect("tree.ged fixture readable");
+    let env = convert_gedcom(&bytes, 0.9, "fr");
+    assert_eq!(
+        env.status,
+        Status::Ok,
+        "convert diags: {:?}",
+        env.diagnostics
+    );
+
+    let flat = bundle(&env);
+    let flat_str = serde_json::to_string(flat).unwrap();
+    let val = validate(&flat_str);
+
+    let schema_warnings: Vec<_> = val
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.as_str() == "SCHEMA_VALIDATION_FAILED")
+        .collect();
+    assert_eq!(
+        schema_warnings.len(),
+        0,
+        "expected 0 SCHEMA_VALIDATION_FAILED, got {}: {:#?}",
+        schema_warnings.len(),
+        schema_warnings
+    );
 }
