@@ -33,9 +33,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # A dynamically-linked GNU build for users who want the smallest
+          # binary and are on a recent glibc (>= 2.39, i.e. Ubuntu 24.04 or
+          # Debian trixie).
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             archive_ext: tar.gz
+          # The statically-linked musl build is the one advertised in the
+          # README: it runs on every Linux distribution regardless of libc
+          # (RHEL 9, Debian 12, older Ubuntus, Alpine, Amazon Linux, …).
+          # `musl-tools` is installed for defence-in-depth even though pure-
+          # Rust deps link fine with rustc's own linker.
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            archive_ext: tar.gz
+            apt_packages: musl-tools
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-latest
             archive_ext: tar.gz
