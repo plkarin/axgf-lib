@@ -5,33 +5,64 @@ All notable changes to `axgf-rs` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-08-03
+
+The headline change is a full command-line interface plus the release
+automation that ships it as pre-built binaries. The library surface,
+diagnostic vocabulary, and MSRV (**1.88.0**) are unchanged from 0.1.0 —
+existing library consumers upgrade transparently.
 
 ### Added
 
 - **`axgf` command-line interface** behind the new `cli` Cargo feature.
-  One subcommand per V1 boundary function (`create`, `import`, `export`,
-  `inspect`, `validate`, `add`, `update`, `delete`, `dedup`,
-  `convert-gedcom`); every subcommand emits the same JSON envelope on
-  stdout and returns the operation's status through the process exit code
-  (0 = ok, 1 = refused, 2 = `validate` reported error-severity
-  diagnostics). Bundle inputs accept `-` to mean stdin so calls compose
-  in a shell pipeline. Install with `cargo install axgf-rs --features cli`.
-- **Multi-platform binary release automation.** A new
+  One subcommand per V1 boundary function:
+  - `create` — new empty bundle stamped with the current spec version.
+  - `import` — decode a `.axgf` archive into flat JSON.
+  - `export` — encode flat JSON back into a `.axgf` archive
+    (optionally writing the ZIP bytes to `--output`).
+  - `inspect` — manifest + freshly computed stats.
+  - `validate` — structural + semantic report (exit code `2` on
+    error-severity diagnostics, so CI can gate on it without
+    misinterpreting an invalid bundle as a broken pipeline).
+  - `add`, `update`, `delete` — CRUD; `--policy` picks
+    `reject|cascade|orphan` for the delete's referential integrity.
+  - `dedup` — safe merges + `MANUAL_REVIEW_REQUIRED` flags.
+  - `convert-gedcom` — GEDCOM 5.5.1 → flat AXGF, with
+    `--confidence` and `--place-lang` controls.
+  Every subcommand emits the same JSON envelope on stdout; every file
+  argument accepts `-` for stdin so calls compose through `jq` in a shell
+  pipeline. Install with `cargo install axgf-rs --features cli`, or grab
+  a pre-built binary from GitHub Releases.
+- **Multi-platform binary release automation.**
   `.github/workflows/release.yml` triggers on `v*` tag pushes, gates on
-  `cargo test --features cli`, then cross-builds `axgf` for
-  `x86_64`/`aarch64` Linux (GNU), `x86_64`/`aarch64` macOS, and
-  `x86_64-pc-windows-msvc`. Each artifact is packaged as a `tar.gz` (or
-  `zip` on Windows) with `README`, `LICENSE`, `NOTICE`, and `CHANGELOG`
-  alongside a SHA256 sidecar, and uploaded to the corresponding GitHub
-  Release.
+  `cargo test --features cli`, and cross-builds `axgf` for six targets:
+  `x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl` (statically
+  linked, runs on every Linux distribution regardless of libc),
+  `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`,
+  `aarch64-apple-darwin`, and `x86_64-pc-windows-msvc`. Each artifact is
+  packaged as a `tar.gz` (or `zip` on Windows) with `README`, `LICENSE`,
+  `NOTICE`, and `CHANGELOG` alongside a SHA256 sidecar, and attached to a
+  fresh GitHub Release via `gh release create --generate-notes`.
+- **`docs/CLI.md`** — end-to-end CLI reference: installation (precompiled
+  binary, `cargo install`, from-source), a 60-second quickstart, one
+  section per subcommand with real captured output, entity-kind
+  vocabulary, and scripting patterns (`jq` pipelines + CI gates).
 
 ### Changed
 
 - **`Cargo.lock` is now tracked** so binary releases are reproducible
   from a given tag. `--locked` is used throughout the release workflow.
-  Library consumers on crates.io are unaffected: `cargo add axgf-rs`
-  still ignores the checked-in lock file.
+  Library consumers pulling from crates.io are unaffected: `cargo
+  publish` excludes the lock file and downstream builds resolve their
+  own versions.
+
+### MSRV
+
+- Unchanged at **1.88.0**. The `cli` feature adds `clap 4.5` (which
+  itself supports back to Rust 1.74), so the crate floor is set by
+  `time` 0.3.55, not `clap`.
+
+[0.2.0]: https://github.com/plkarin/axgf-lib/releases/tag/v0.2.0
 
 ## [0.1.0] — 2026-08-02
 

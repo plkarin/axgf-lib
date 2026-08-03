@@ -266,9 +266,34 @@ plain `cargo test` keeps the 82-test baseline unchanged. To include it:
 cargo test --features cli    # baseline + 14 CLI integration tests
 ```
 
+## 8. Building and running the CLI locally
+
+The `axgf` binary lives in `src/bin/axgf.rs` and is registered with
+`required-features = ["cli"]`, so it is not built unless the feature is
+enabled.
+
+```bash
+# Debug build (fast to iterate; slow to run)
+cargo build --features cli
+./target/debug/axgf --help
+
+# Release build (used for distribution)
+cargo build --features cli --release
+./target/release/axgf --version
+
+# Quick smoke test against the vendored GEDCOM fixture
+./target/release/axgf convert-gedcom --input tests/fixtures/small.ged \
+    | jq -c .data.bundle \
+    | ./target/release/axgf validate --input -
+```
+
+Full CLI reference — every subcommand, every flag, real captured output,
+scripting patterns, and pre-built binary installation — lives in
+[`docs/CLI.md`](docs/CLI.md).
+
 ---
 
-## 8. Quick reference - public API
+## 9. Quick reference - public API
 
 | Function | Input | Output |
 |---|---|---|

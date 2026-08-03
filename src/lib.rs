@@ -70,13 +70,23 @@
 //! assert_eq!(checked.status, Status::Ok);
 //! ```
 //!
+//! ## Command-line binary
+//!
+//! The same core is shipped as a standalone `axgf` executable behind the
+//! `cli` Cargo feature — one subcommand per function documented below,
+//! reading and writing the same [`boundary::envelope::Envelope`] shape on
+//! stdin/stdout. See [`docs/CLI.md`] for the full reference. Install with
+//! `cargo install axgf-rs --features cli`.
+//!
 //! ## Further reading
 //!
 //! - [`docs/API.md`] — a longer walk-through of every public function.
+//! - [`docs/CLI.md`] — the `axgf` binary: subcommands, flags, scripting.
 //! - [`SETUP.md`] — build instructions and per-target adapter notes.
 //! - [AXGF specification] — the format itself.
 //!
 //! [`docs/API.md`]: https://github.com/plkarin/axgf-lib/blob/main/docs/API.md
+//! [`docs/CLI.md`]: https://github.com/plkarin/axgf-lib/blob/main/docs/CLI.md
 //! [`SETUP.md`]: https://github.com/plkarin/axgf-lib/blob/main/SETUP.md
 
 #![forbid(unsafe_code)]

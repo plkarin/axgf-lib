@@ -68,18 +68,53 @@ The pre-1.0 version signals that the public API may still change. The AXGF **for
 ### Command-line binary
 
 The same core is also shipped as a standalone `axgf` executable behind the
-`cli` feature. Every V1 API function is a subcommand; each prints the
-uniform envelope on stdout so calls compose in a shell pipeline.
+`cli` feature. See the **[Command line](#command-line)** section below for
+the fast path.
 
 ```sh
 cargo install axgf-rs --features cli
-axgf create --family-name "Karin" | jq .data
-axgf validate --input bundle.json     # exit 2 on error-severity diagnostics
-axgf convert-gedcom --input tree.ged --confidence 0.8 --place-lang pl
 ```
 
-Pre-built binaries for Linux, macOS, and Windows are attached to each
-tagged release on GitHub.
+Pre-built binaries for Linux (musl static + glibc), macOS, and Windows are
+attached to each tagged release on GitHub.
+
+---
+
+## Command line
+
+The `axgf` binary is the fastest way to evaluate the project. Every V1
+boundary function is a subcommand; each prints the uniform JSON envelope
+on stdout so calls compose in a shell pipeline through `jq`.
+
+```console
+$ axgf create --family-name "Karin" | jq '.data.manifest'
+{
+  "axgf": "1.0",
+  "created_at": "2026-08-03T10:08:09Z",
+  "updated_at": "2026-08-03T10:08:09Z",
+  "stats": {
+    "persons": 0, "families": 0, "events": 0, "links": 0,
+    "occupations": 0, "sources": 0, "places": 0, "documents": 0
+  },
+  "family": { "name": "Karin" }
+}
+
+$ axgf convert-gedcom --input tree.ged \
+    | jq -c .data.bundle \
+    | tee tree.json \
+    | axgf validate --input - | jq '.data'
+{ "errors": 0, "warnings": 3, "infos": 0, "total": 3 }
+
+$ axgf inspect --input tree.json | jq .data.stats
+{ "persons": 3, "families": 1, "events": 1, "links": 0,
+  "occupations": 1, "sources": 1, "places": 2, "documents": 2 }
+```
+
+The exit code is `0` on success, `1` when the operation is refused, and
+`2` when `axgf validate` reports at least one error-severity diagnostic
+(warnings do not count). See **[`docs/CLI.md`](docs/CLI.md)** for the
+full reference: every subcommand, every flag, real captured output,
+scripting patterns, and installation from precompiled binaries.
 
 ---
 
