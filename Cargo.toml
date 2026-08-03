@@ -28,15 +28,17 @@ include = [
 name = "axgf_rs"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
-# The `axgf` CLI is gated behind the `cli` feature so plain library consumers
-# do not pull `clap`. Install with `cargo install axgf-rs --features cli`.
+# The `axgf` CLI is on by default so `cargo install axgf-rs` produces the
+# binary. Library-only consumers can opt out with
+# `default-features = false, features = ["gedcom"]` to avoid the `clap`
+# dependency.
 [[bin]]
 name              = "axgf"
 path              = "src/bin/axgf.rs"
 required-features = ["cli"]
 
 [features]
-default = ["gedcom"]
+default = ["gedcom", "cli"]
 gedcom  = []
 cli     = ["dep:clap"]
 wasm    = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
