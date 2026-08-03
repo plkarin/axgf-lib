@@ -49,6 +49,13 @@ ways before `1.0.0`. Track breaking changes here and in the git history.
   `.github/workflows/schema-drift.yml`; `scripts/sync-schema.sh` is the
   only supported way to refresh the vendored copy.
 
+### MSRV
+
+- Minimum Supported Rust Version: **1.88.0**. Transitive dependencies
+  (`time-core`, `idna_adapter`) require Rust 2024 edition support, which
+  stabilised in 1.85, and `time` 0.3.55 raises the effective floor to
+  1.88. The MSRV was measured with `cargo msrv find --all-features`.
+
 ### Known limitations
 
 - No disk I/O, no query engine, no graph traversal, no rendering — by
