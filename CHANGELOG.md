@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (0 = ok, 1 = refused, 2 = `validate` reported error-severity
   diagnostics). Bundle inputs accept `-` to mean stdin so calls compose
   in a shell pipeline. Install with `cargo install axgf-rs --features cli`.
+- **Multi-platform binary release automation.** A new
+  `.github/workflows/release.yml` triggers on `v*` tag pushes, gates on
+  `cargo test --features cli`, then cross-builds `axgf` for
+  `x86_64`/`aarch64` Linux (GNU), `x86_64`/`aarch64` macOS, and
+  `x86_64-pc-windows-msvc`. Each artifact is packaged as a `tar.gz` (or
+  `zip` on Windows) with `README`, `LICENSE`, `NOTICE`, and `CHANGELOG`
+  alongside a SHA256 sidecar, and uploaded to the corresponding GitHub
+  Release.
+
+### Changed
+
+- **`Cargo.lock` is now tracked** so binary releases are reproducible
+  from a given tag. `--locked` is used throughout the release workflow.
+  Library consumers on crates.io are unaffected: `cargo add axgf-rs`
+  still ignores the checked-in lock file.
 
 ## [0.1.0] — 2026-08-02
 

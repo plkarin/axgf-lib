@@ -1,5 +1,8 @@
 /target
-Cargo.lock
+# Cargo.lock is tracked. The crate ships an `axgf` binary in addition to the
+# library; per Cargo guidance, packages that produce executables commit their
+# lock file so releases are reproducible byte-for-byte from the same tag.
+# The `release` workflow builds with `--locked`.
 **/*.rs.bk
 *.pdb
 .DS_Store

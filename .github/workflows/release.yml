@@ -1,0 +1,146 @@
+name: release
+
+# Fires when a semver tag is pushed. Builds the `axgf` CLI for five targets,
+# packages each with README/LICENSE/NOTICE/CHANGELOG plus a SHA256 sidecar,
+# and attaches the artifacts to a fresh GitHub Release.
+#
+# The `test` job runs the full library test suite (baseline 82 tests + the
+# 14 CLI integration tests) as a gate — a broken tag never publishes binaries.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # required to create the release and upload assets
+
+jobs:
+  # Pre-flight: refuse to publish binaries built from a red tag.
+  test:
+    name: Gate on cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo test --features cli
+        run: cargo test --locked --features cli
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive_ext: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive_ext: tar.gz
+            apt_packages: gcc-aarch64-linux-gnu
+            cross_linker: aarch64-linux-gnu-gcc
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            archive_ext: tar.gz
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            archive_ext: tar.gz
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            archive_ext: zip
+            binary_ext: .exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation packages
+        if: matrix.apt_packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.apt_packages }}
+
+      - name: Configure cross linker
+        if: matrix.cross_linker
+        shell: bash
+        run: |
+          # Cargo reads CARGO_TARGET_<TRIPLE>_LINKER (with `-` mapped to `_`
+          # and lowercase to uppercase). Setting it here beats a per-triple
+          # .cargo/config.toml because it stays scoped to this job.
+          key="CARGO_TARGET_$(echo ${{ matrix.target }} | tr 'a-z-' 'A-Z_')_LINKER"
+          echo "$key=${{ matrix.cross_linker }}" >> "$GITHUB_ENV"
+
+      - name: Build release binary
+        run: cargo build --release --locked --features cli --bin axgf --target ${{ matrix.target }}
+
+      - name: Package archive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF#refs/tags/}"
+          stage="axgf-${tag}-${{ matrix.target }}"
+          mkdir -p "$stage"
+          cp "target/${{ matrix.target }}/release/axgf${{ matrix.binary_ext }}" "$stage/"
+          cp README.md LICENSE NOTICE CHANGELOG.md "$stage/"
+
+          if [[ "${{ matrix.archive_ext }}" == "zip" ]]; then
+            # 7z is preinstalled on windows-latest and produces a zip.
+            7z a "${stage}.zip" "$stage" >/dev/null
+            archive="${stage}.zip"
+          else
+            tar -czf "${stage}.tar.gz" "$stage"
+            archive="${stage}.tar.gz"
+          fi
+
+          # macOS runners ship BSD `shasum`; Linux/Windows ship GNU `sha256sum`.
+          # Both produce the standard "<hex>  <name>" line the release notes
+          # can point at, so downstream verifiers do not need to know which
+          # runner produced which file.
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$archive" > "${archive}.sha256"
+          else
+            shasum -a 256 "$archive" > "${archive}.sha256"
+          fi
+
+          echo "ARCHIVE=$archive"     >> "$GITHUB_ENV"
+          echo "ARCHIVE_SHA=${archive}.sha256" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: axgf-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE_SHA }}
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: axgf-*
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          # `--generate-notes` reads the CHANGELOG-style commits since the
+          # previous tag; humans still edit the release afterwards.
+          gh release create "$tag" dist/* \
+            --title "$tag" \
+            --generate-notes
