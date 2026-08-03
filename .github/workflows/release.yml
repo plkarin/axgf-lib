@@ -54,7 +54,7 @@ jobs:
             apt_packages: gcc-aarch64-linux-gnu
             cross_linker: aarch64-linux-gnu-gcc
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-latest
             archive_ext: tar.gz
           - target: aarch64-apple-darwin
             runner: macos-latest
