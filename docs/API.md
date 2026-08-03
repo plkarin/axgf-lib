@@ -1,7 +1,7 @@
 # axgf-lib - V1 API surface
 
-Every public function returns the same envelope. `data` on error is `null`;
-diagnostics carry stable machine-readable codes.
+Every public function returns the same envelope. Diagnostics carry stable
+machine-readable codes.
 
 ```json
 {
@@ -14,9 +14,43 @@ diagnostics carry stable machine-readable codes.
 }
 ```
 
+### Accessing `data` from Rust
+
+`Envelope::data` is a `serde_json::Value`, **not** an `Option<Value>`. On error
+it holds `Value::Null`, which serializes to JSON `null`. Access it directly -
+`.expect()` and `.unwrap()` do not exist on `Value` and will not compile:
+
+```rust
+// WRONG - Value has no expect() / unwrap()
+let flat = env.data.expect("failed").to_string();
+
+// RIGHT
+let flat = env.data.to_string();
+
+// Detecting failure
+if env.data.is_null() {
+    for d in &env.diagnostics {
+        eprintln!("{:?}: {}", d.code, d.message);
+    }
+}
+```
+
+Indexing a `Value` with `[]` is infallible and yields `Value::Null` for missing
+keys, so a chain like `env.data["bundle"]` never panics. Converting to a
+concrete type is where fallibility appears, and there `Option` methods are
+correct:
+
+```rust
+let d  = env.data;
+let id = d["id"].as_str().expect("id missing");   // as_str() -> Option<&str>
+let n  = d["stats"]["persons"].as_u64().unwrap_or(0);
+```
+
 Validation is **non-blocking**: an envelope with `status: "ok"` may still
 carry `warning` - or even `error`-severity - diagnostics. The status reflects
 whether the operation was refused, not whether the bundle is problem-free.
+
+### The flat bundle
 
 Bundles cross the boundary as flat JSON:
 
@@ -100,7 +134,7 @@ println!("{}", env.to_json());
 knows what the family should be called. `manifest.family` is simply absent.*
 
 ```rust
-let env = create_bundle(None);
+let flat = create_bundle(None).data.to_string();
 // manifest.family is omitted entirely - not null, not empty string
 ```
 
@@ -127,8 +161,11 @@ the library never touches the filesystem - the caller reads the bytes.*
 use axgf_rs::import_bundle;
 
 let bytes = std::fs::read("family.axgf")?;      // caller's responsibility
-let env = import_bundle(&bytes);
-let flat = env.data.expect("import failed");
+let env   = import_bundle(&bytes);
+if env.data.is_null() {
+    return Err("import failed - see diagnostics");
+}
+let flat = env.data.to_string();
 ```
 
 #### Demo B - a bundle carrying scanned certificates
@@ -170,6 +207,7 @@ why a stale client can never corrupt a newer file.*
 
 ```rust
 let env = import_bundle(&bytes_from_axgf_2_0);
+assert!(env.data.is_null());
 ```
 
 ```json
@@ -190,7 +228,7 @@ let env = import_bundle(&bytes_from_axgf_2_0);
 
 ```rust
 let env = import_bundle(b"not a zip at all");
-// status: error, code: ZIP_READ_ERROR
+// status: error, code: ZIP_READ_ERROR, data: null
 ```
 
 ---
@@ -214,8 +252,8 @@ response.*
 use axgf_rs::export_bundle;
 use base64::Engine as _;
 
-let env = export_bundle(&flat_json);
-let b64 = env.data.unwrap()["zip_base64"].as_str().unwrap();
+let d   = export_bundle(&flat_json).data;
+let b64 = d["zip_base64"].as_str().ok_or("export failed")?;
 let zip = base64::engine::general_purpose::STANDARD.decode(b64)?;
 std::fs::write("family.axgf", zip)?;             // caller's responsibility
 ```
@@ -246,8 +284,7 @@ let env = export_bundle(&flat_json);
 crosses the library boundary; the HTTP layer decodes once.*
 
 ```rust
-let env = export_bundle(&flat_json);
-let d = env.data.unwrap();
+let d = export_bundle(&flat_json).data;
 // HTTP 200, Content-Type: application/vnd.axgf+zip
 // Content-Length: d["size_bytes"]
 // body: base64-decoded d["zip_base64"]
@@ -271,9 +308,9 @@ deserializing every entity. Cheap enough to call on every page load.*
 ```rust
 use axgf_rs::inspect;
 
-let env = inspect(&flat_json);
-let d = env.data.unwrap();
-println!("{} persons in {}", d["stats"]["persons"],
+let d = inspect(&flat_json).data;
+println!("{} persons in {}",
+         d["stats"]["persons"],
          d["manifest"]["family"]["name"]);
 ```
 
@@ -284,11 +321,10 @@ the recomputed ones, something wrote entities without updating the header -
 worth surfacing to the operator.*
 
 ```rust
-let d = inspect(&flat_json).data.unwrap();
-let declared = &d["manifest"]["stats"];
-let actual   = &d["stats"];
-if declared != actual {
-    eprintln!("manifest drift: declared {declared}, actual {actual}");
+let d = inspect(&flat_json).data;
+if d["manifest"]["stats"] != d["stats"] {
+    eprintln!("manifest drift: declared {}, actual {}",
+              d["manifest"]["stats"], d["stats"]);
 }
 ```
 
@@ -377,12 +413,11 @@ error-severity findings, while tolerating warnings.*
 ```rust
 use axgf_rs::{validate, export_bundle};
 
-let report = validate(&flat_json);
-let errors = report.data.as_ref().unwrap()["errors"].as_u64().unwrap_or(0);
+let errors = validate(&flat_json).data["errors"].as_u64().unwrap_or(0);
 if errors > 0 {
     return Err("refusing to save a bundle with structural errors");
 }
-let env = export_bundle(&flat_json);
+let zip = export_bundle(&flat_json).data;
 ```
 
 ---
@@ -425,9 +460,8 @@ let person = json!({
                        "precision": "exact", "circa": false, "confidence": 0.98 } }
 });
 
-let env = add_entity(&flat, EntityKind::Person, &person.to_string());
-let d = env.data.unwrap();
-let new_id = d["id"].as_str().unwrap();   // "f2930ccf-46ea-4841-aa0c-780d227b619b"
+let d      = add_entity(&flat, EntityKind::Person, &person.to_string()).data;
+let new_id = d["id"].as_str().expect("id missing").to_string();
 let flat   = d["bundle"].to_string();     // carry forward
 ```
 
@@ -444,7 +478,7 @@ let person = json!({
                 "is_living": false, "visibility": "members" }
 });
 let env = add_entity(&flat, EntityKind::Person, &person.to_string());
-// re-running the same call yields ENTITY_ALREADY_EXISTS
+// re-running the same call yields ENTITY_ALREADY_EXISTS and data: null
 ```
 
 #### Demo C - a family binding two existing persons
@@ -468,7 +502,8 @@ let family = json!({
   },
   "children": []
 });
-let env = add_entity(&flat, EntityKind::Family, &family.to_string());
+let d    = add_entity(&flat, EntityKind::Family, &family.to_string()).data;
+let flat = d["bundle"].to_string();
 ```
 
 #### Demo D - an event touching three entities at once
@@ -491,7 +526,8 @@ let event = json!({
   ],
   "description": "Civil marriage, Paris 14th"
 });
-let env = add_entity(&flat, EntityKind::Event, &event.to_string());
+let flat = add_entity(&flat, EntityKind::Event, &event.to_string())
+    .data["bundle"].to_string();
 ```
 
 #### Demo E - a non-family relationship
@@ -512,7 +548,8 @@ let link = json!({
   "confidence": 0.85,
   "source_id": letter_source_id
 });
-let env = add_entity(&flat, EntityKind::Link, &link.to_string());
+let flat = add_entity(&flat, EntityKind::Link, &link.to_string())
+    .data["bundle"].to_string();
 ```
 
 #### Demo F - a career as a state, not an event
@@ -532,7 +569,8 @@ let occ = json!({
   "confidence": 0.90,
   "source_id": municipal_archive_id
 });
-let env = add_entity(&flat, EntityKind::Occupation, &occ.to_string());
+let flat = add_entity(&flat, EntityKind::Occupation, &occ.to_string())
+    .data["bundle"].to_string();
 ```
 
 #### Demo G - a place reused by many entities
@@ -551,7 +589,9 @@ let place = json!({
   "country_history": [ { "country": "FR", "from": null, "until": null } ],
   "identifiers": { "wikidata": "Q47045" }
 });
-let env = add_entity(&flat, EntityKind::Place, &place.to_string());
+let d       = add_entity(&flat, EntityKind::Place, &place.to_string()).data;
+let place_id = d["id"].as_str().expect("id missing").to_string();
+let flat    = d["bundle"].to_string();
 ```
 
 #### Demo H - a source, then a document that evidences it
@@ -570,9 +610,9 @@ let source = json!({
   "repository": { "name": "Departmental Archives of Reunion",
                   "reference": "5MI/47/1923/0047" }
 });
-let src_env = add_entity(&flat, EntityKind::Source, &source.to_string());
-let src_id  = src_env.data.as_ref().unwrap()["id"].as_str().unwrap();
-let flat    = src_env.data.unwrap()["bundle"].to_string();
+let d      = add_entity(&flat, EntityKind::Source, &source.to_string()).data;
+let src_id = d["id"].as_str().expect("id missing").to_string();
+let flat   = d["bundle"].to_string();
 
 let document = json!({
   "filename": "birth-cert-1923.pdf",
@@ -584,7 +624,8 @@ let document = json!({
     { "entity_type": "source", "entity_id": src_id,  "role": "evidence" }
   ]
 });
-let env = add_entity(&flat, EntityKind::Document, &document.to_string());
+let flat = add_entity(&flat, EntityKind::Document, &document.to_string())
+    .data["bundle"].to_string();
 ```
 
 #### Demo I - a schema-imperfect entity still lands
@@ -629,7 +670,8 @@ let mut jean = bundle["persons"][jean_id].clone();
 jean["id"]  = json!(jean_id);                    // id is mandatory on update
 jean["bio"] = json!("Schoolteacher. Order of Merit, 1972.");
 
-let env = update_entity(&flat, EntityKind::Person, &jean.to_string());
+let flat = update_entity(&flat, EntityKind::Person, &jean.to_string())
+    .data["bundle"].to_string();
 ```
 
 #### Demo B - correcting a date after finding the certificate
@@ -644,7 +686,9 @@ jean["birth"]["date"] = json!({
   "precision": "exact", "circa": false, "confidence": 0.98
 });
 jean["birth"]["source_id"] = json!(birth_cert_source_id);
-let env = update_entity(&flat, EntityKind::Person, &jean.to_string());
+
+let flat = update_entity(&flat, EntityKind::Person, &jean.to_string())
+    .data["bundle"].to_string();
 ```
 
 #### Demo C - adding a child to an existing family
@@ -655,10 +699,12 @@ targets the family, not the child.*
 ```rust
 let mut family = bundle["families"][family_id].clone();
 family["id"] = json!(family_id);
-family["children"].as_array_mut().unwrap().push(json!({
+family["children"].as_array_mut().expect("children must be an array").push(json!({
     "person_id": robert_id, "birth_order": 1, "confidence": 0.99
 }));
-let env = update_entity(&flat, EntityKind::Family, &family.to_string());
+
+let flat = update_entity(&flat, EntityKind::Family, &family.to_string())
+    .data["bundle"].to_string();
 ```
 
 #### Demo D - update on an unknown id
@@ -707,6 +753,9 @@ before anything is lost.*
 use axgf_rs::{delete_entity, EntityKind, DeletePolicy};
 
 let env = delete_entity(&flat, EntityKind::Person, jean_id, DeletePolicy::Reject);
+if env.data.is_null() {
+    // bundle untouched; show env.diagnostics to the user
+}
 ```
 
 ```json
@@ -727,8 +776,8 @@ let env = delete_entity(&flat, EntityKind::Person, jean_id, DeletePolicy::Reject
 built. Nothing points at them, so Reject has nothing to object to.*
 
 ```rust
-let env = delete_entity(&flat, EntityKind::Person, orphan_id, DeletePolicy::Reject);
-// status: ok
+let flat = delete_entity(&flat, EntityKind::Person, orphan_id, DeletePolicy::Reject)
+    .data["bundle"].to_string();
 ```
 
 #### Demo C - Cascade to genuinely erase someone
@@ -738,7 +787,8 @@ disappears and every reference to them is physically removed - the family's
 `union.persons` array shrinks, an event's participant entry is dropped.*
 
 ```rust
-let env = delete_entity(&flat, EntityKind::Person, jean_id, DeletePolicy::Cascade);
+let flat = delete_entity(&flat, EntityKind::Person, jean_id, DeletePolicy::Cascade)
+    .data["bundle"].to_string();
 ```
 
 Before and after, on the referring family:
@@ -759,7 +809,8 @@ its occupant becomes unknown - which is often historically truer than
 pretending the relationship never existed.*
 
 ```rust
-let env = delete_entity(&flat, EntityKind::Person, father_id, DeletePolicy::Orphan);
+let flat = delete_entity(&flat, EntityKind::Person, father_id, DeletePolicy::Orphan)
+    .data["bundle"].to_string();
 ```
 
 ```json
@@ -774,8 +825,8 @@ let env = delete_entity(&flat, EntityKind::Person, father_id, DeletePolicy::Orph
 And on a scalar reference:
 
 ```json
-// before                       // after Orphan
-"birth": { "place_id": "p4d2..." }   "birth": { "place_id": null }
+// before                             // after Orphan
+"birth": { "place_id": "p4d2..." }    "birth": { "place_id": null }
 // (under Cascade the place_id key would be removed entirely)
 ```
 
@@ -786,7 +837,8 @@ place from every birth, death and event that referenced it; the caller then
 points them at the surviving place with a series of updates.*
 
 ```rust
-let env = delete_entity(&flat, EntityKind::Place, dup_place_id, DeletePolicy::Cascade);
+let flat = delete_entity(&flat, EntityKind::Place, dup_place_id, DeletePolicy::Cascade)
+    .data["bundle"].to_string();
 // every "place_id": "<dup>" key is now gone from persons, events, occupations
 ```
 
@@ -821,7 +873,9 @@ resulting duplicate family collapse in one call.*
 ```rust
 use axgf_rs::deduplicate;
 
-let env = deduplicate(&flat);
+let d    = deduplicate(&flat).data;
+let flat = d["bundle"].to_string();
+println!("merged {} persons, {} families", d["merged_persons"], d["merged_families"]);
 ```
 
 ```json
@@ -885,12 +939,13 @@ it flags them and leaves both intact.*
 convert, deduplicate, validate, then export.*
 
 ```rust
-let bundle = convert_gedcom(&bytes, 0.8, "pl").data.unwrap()["bundle"].to_string();
-let clean  = deduplicate(&bundle).data.unwrap();
+let bundle = convert_gedcom(&bytes, 0.8, "pl").data["bundle"].to_string();
+let clean  = deduplicate(&bundle).data;
 println!("merged {} persons, {} families, {} need review",
          clean["merged_persons"], clean["merged_families"], clean["manual_review"]);
-let flat = clean["bundle"].to_string();
-let report = validate(&flat);
+
+let flat   = clean["bundle"].to_string();
+let report = validate(&flat).data;
 ```
 
 ---
@@ -920,8 +975,7 @@ express uncertainty; 0.8 says "probably right, but not verified by me".*
 use axgf_rs::convert_gedcom;
 
 let bytes = std::fs::read("export-from-webtrees.ged")?;
-let env = convert_gedcom(&bytes, 0.8, "en");
-let flat = env.data.unwrap()["bundle"].to_string();
+let flat  = convert_gedcom(&bytes, 0.8, "en").data["bundle"].to_string();
 ```
 
 #### Demo B - a Polish archive with localised dates
@@ -1019,14 +1073,19 @@ later.*
 saved archive.*
 
 ```rust
+use base64::Engine as _;
+
 let bytes  = std::fs::read("tree.ged")?;
-let flat   = convert_gedcom(&bytes, 0.8, "pl").data.unwrap()["bundle"].to_string();
-let clean  = deduplicate(&flat).data.unwrap()["bundle"].to_string();
-let report = validate(&clean);
-let zip    = export_bundle(&clean).data.unwrap();
+let flat   = convert_gedcom(&bytes, 0.8, "pl").data["bundle"].to_string();
+let clean  = deduplicate(&flat).data["bundle"].to_string();
+let report = validate(&clean).data;
+println!("validation: {} errors, {} warnings",
+         report["errors"], report["warnings"]);
+
+let zip = export_bundle(&clean).data;
+let b64 = zip["zip_base64"].as_str().ok_or("export failed")?;
 std::fs::write("family.axgf",
-    base64::engine::general_purpose::STANDARD.decode(
-        zip["zip_base64"].as_str().unwrap())?)?;
+    base64::engine::general_purpose::STANDARD.decode(b64)?)?;
 ```
 
 ---
@@ -1043,15 +1102,15 @@ forward, because the library is stateless.*
 use axgf_rs::*;
 use serde_json::json;
 
-// 1. empty archive
-let mut flat = create_bundle(Some("Pierre-Leonard Family"))
-    .data.unwrap().to_string();
-
-// helper: add and carry forward
+// helper: add an entity and carry the new bundle forward
 fn push(flat: &str, kind: EntityKind, e: serde_json::Value) -> (String, String) {
-    let d = add_entity(flat, kind, &e.to_string()).data.unwrap();
-    (d["id"].as_str().unwrap().to_string(), d["bundle"].to_string())
+    let d = add_entity(flat, kind, &e.to_string()).data;
+    (d["id"].as_str().expect("id missing").to_string(),
+     d["bundle"].to_string())
 }
+
+// 1. empty archive
+let mut flat = create_bundle(Some("Pierre-Leonard Family")).data.to_string();
 
 // 2. a place both generations will reference
 let (paris, f) = push(&flat, EntityKind::Place, json!({
@@ -1062,7 +1121,7 @@ let (paris, f) = push(&flat, EntityKind::Place, json!({
 flat = f;
 
 // 3. generation 1
-let (jean, f)  = push(&flat, EntityKind::Person, json!({
+let (jean, f) = push(&flat, EntityKind::Person, json!({
     "identity": { "name": { "display": "Jean Pierre-Leonard", "components": [] },
                   "gender": { "value": "M" }, "is_living": false,
                   "visibility": "members" },
@@ -1070,6 +1129,7 @@ let (jean, f)  = push(&flat, EntityKind::Person, json!({
                "place_id": paris }
 }));
 flat = f;
+
 let (elise, f) = push(&flat, EntityKind::Person, json!({
     "identity": { "name": { "display": "Elise Bernard", "components": [] },
                   "gender": { "value": "F" }, "is_living": false,
@@ -1088,7 +1148,7 @@ let (robert, f) = push(&flat, EntityKind::Person, json!({
 flat = f;
 
 // 5. the family binding them
-let (family, f) = push(&flat, EntityKind::Family, json!({
+let (_family, f) = push(&flat, EntityKind::Family, json!({
     "union": { "type": "marriage",
                "persons": [ { "person_id": jean,  "role": "spouse" },
                             { "person_id": elise, "role": "spouse" } ],
@@ -1099,9 +1159,9 @@ let (family, f) = push(&flat, EntityKind::Family, json!({
 flat = f;
 
 // 6. check coherence, then save
-let report = validate(&flat);
-assert_eq!(report.data.unwrap()["errors"], 0);
-let zip = export_bundle(&flat).data.unwrap();
+let errors = validate(&flat).data["errors"].as_u64().unwrap_or(0);
+assert_eq!(errors, 0);
+let zip = export_bundle(&flat).data;
 ```
 
 ### Scenario 2 - merge two archives from different relatives
@@ -1110,21 +1170,23 @@ let zip = export_bundle(&flat).data.unwrap();
 overlap is the shared ancestors, which deduplicate resolves.*
 
 ```rust
-let a = import_bundle(&std::fs::read("cousin-a.axgf")?).data.unwrap();
-let b = import_bundle(&std::fs::read("cousin-b.axgf")?).data.unwrap();
+let a = import_bundle(&std::fs::read("cousin-a.axgf")?).data;
+let b = import_bundle(&std::fs::read("cousin-b.axgf")?).data;
 
-// merge collections (client-side: the library does not join bundles in V1)
+// merge collections client-side: the library does not join bundles in V1
 let mut merged = a.clone();
 for coll in ["persons","families","events","links",
              "occupations","sources","places","documents"] {
-    let target = merged[coll].as_object_mut().unwrap();
-    for (id, entity) in b[coll].as_object().unwrap() {
-        target.insert(id.clone(), entity.clone());
+    let target = merged[coll].as_object_mut().expect("collection must be an object");
+    if let Some(src) = b[coll].as_object() {
+        for (id, entity) in src {
+            target.insert(id.clone(), entity.clone());
+        }
     }
 }
 
 // let the library resolve the overlap
-let clean = deduplicate(&merged.to_string()).data.unwrap();
+let clean = deduplicate(&merged.to_string()).data;
 println!("merged {} duplicate persons, {} families; {} need a human",
          clean["merged_persons"], clean["merged_families"], clean["manual_review"]);
 ```
@@ -1132,17 +1194,24 @@ println!("merged {} duplicate persons, {} families; {} need a human",
 ### Scenario 3 - a validation dashboard
 
 *Reproduces: a client surfacing research quality. Diagnostics group naturally
-into a to-do list for the genealogist.*
+into a to-do list for the genealogist. Working from the serialized envelope
+keeps this identical across every language binding.*
 
 ```rust
-let env = validate(&flat);
-let mut by_code: std::collections::BTreeMap<&str, Vec<&str>> = Default::default();
-for d in env.diagnostics.iter() {
-    by_code.entry(d.code_str())
-           .or_default()
-           .push(d.entity_ref.as_deref().unwrap_or("-"));
+use std::collections::BTreeMap;
+
+let env: serde_json::Value =
+    serde_json::from_str(&validate(&flat).to_json())?;
+
+let mut by_code: BTreeMap<String, Vec<String>> = BTreeMap::new();
+if let Some(diags) = env["diagnostics"].as_array() {
+    for d in diags {
+        let code = d["code"].as_str().unwrap_or("UNKNOWN").to_string();
+        let who  = d["entity_ref"].as_str().unwrap_or("-").to_string();
+        by_code.entry(code).or_default().push(who);
+    }
 }
-for (code, refs) in by_code {
+for (code, refs) in &by_code {
     println!("{code}: {} affected", refs.len());
 }
 ```
@@ -1160,16 +1229,20 @@ pure, no session state is needed - the bundle travels with each request,
 which is exactly what makes horizontal scaling trivial.*
 
 ```
-POST /api/bundle                    -> create_bundle
-POST /api/bundle/import  (ZIP body) -> import_bundle
-POST /api/bundle/export  (flat)     -> export_bundle
-POST /api/bundle/validate(flat)     -> validate
-POST /api/entity/:kind   (flat+e)   -> add_entity
-PUT  /api/entity/:kind   (flat+e)   -> update_entity
-DELETE /api/entity/:kind/:id?policy -> delete_entity
-POST /api/bundle/dedup   (flat)     -> deduplicate
-POST /api/convert/gedcom (bytes)    -> convert_gedcom
+POST   /api/bundle                    -> create_bundle
+POST   /api/bundle/import  (ZIP body) -> import_bundle
+POST   /api/bundle/export  (flat)     -> export_bundle
+POST   /api/bundle/validate (flat)    -> validate
+POST   /api/entity/:kind   (flat+e)   -> add_entity
+PUT    /api/entity/:kind   (flat+e)   -> update_entity
+DELETE /api/entity/:kind/:id?policy   -> delete_entity
+POST   /api/bundle/dedup   (flat)     -> deduplicate
+POST   /api/convert/gedcom (bytes)    -> convert_gedcom
 ```
+
+Every handler is a one-liner: parse the request body, call the function,
+return `envelope.to_json()` verbatim. The envelope already carries status and
+diagnostics, so no error-mapping layer is needed.
 
 ---
 
