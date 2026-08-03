@@ -3,8 +3,9 @@
 //!
 //! The tests spawn the freshly-built binary via `CARGO_BIN_EXE_axgf` (set
 //! automatically by Cargo when a `[[bin]]` target is in scope) and inspect
-//! its stdout as an [`Envelope`]. The whole file is elided when the `cli`
-//! feature is off — plain `cargo test` still passes with the baseline 82.
+//! its stdout as an [`Envelope`] with `--json`. The whole file is elided
+//! when the `cli` feature is off — but `cli` is now on by default, so
+//! plain `cargo test` runs all of these too.
 
 #![cfg(feature = "cli")]
 
@@ -50,7 +51,8 @@ fn run(args: &[&str], stdin_bytes: &[u8]) -> (i32, Vec<u8>, String) {
 
 fn parse_envelope(stdout: &[u8]) -> Envelope {
     let text = std::str::from_utf8(stdout).expect("utf-8 stdout");
-    // The binary prints exactly one envelope followed by a newline.
+    // The binary prints exactly one envelope followed by a newline in
+    // `--json` mode.
     serde_json::from_str(text.trim())
         .unwrap_or_else(|e| panic!("expected an Envelope on stdout, got: {text}\nparse error: {e}"))
 }
@@ -109,7 +111,7 @@ fn unknown_subcommand_is_rejected_by_clap() {
 
 #[test]
 fn create_prints_ok_envelope_with_current_spec_version() {
-    let (code, stdout, _stderr) = run(&["create"], b"");
+    let (code, stdout, _stderr) = run(&["--json", "create"], b"");
     assert_eq!(code, 0);
     let env = parse_envelope(&stdout);
     assert_eq!(env.status, Status::Ok);
@@ -120,7 +122,7 @@ fn create_prints_ok_envelope_with_current_spec_version() {
 
 #[test]
 fn create_with_family_name_populates_manifest() {
-    let (code, stdout, _stderr) = run(&["create", "--family-name", "Karin"], b"");
+    let (code, stdout, _stderr) = run(&["--json", "create", "--name", "Karin"], b"");
     assert_eq!(code, 0);
     let env = parse_envelope(&stdout);
     assert_eq!(env.data["manifest"]["family"]["name"], "Karin");
@@ -133,7 +135,9 @@ fn create_with_family_name_populates_manifest() {
 #[test]
 fn inspect_reads_flat_bundle_from_stdin() {
     let bundle = axgf_rs::create_bundle(Some("Karin")).data.to_string();
-    let (code, stdout, _stderr) = run(&["inspect", "--input", "-"], bundle.as_bytes());
+    // Positional PATH: `-` reads from stdin. `--input -` is still
+    // accepted as a back-compat alias.
+    let (code, stdout, _stderr) = run(&["--json", "inspect", "-"], bundle.as_bytes());
     assert_eq!(code, 0);
     let env = parse_envelope(&stdout);
     assert_eq!(env.status, Status::Ok);
@@ -143,7 +147,7 @@ fn inspect_reads_flat_bundle_from_stdin() {
 #[test]
 fn validate_of_clean_bundle_is_zero_exit_and_zero_diagnostics() {
     let bundle = axgf_rs::create_bundle(None).data.to_string();
-    let (code, stdout, _stderr) = run(&["validate", "--input", "-"], bundle.as_bytes());
+    let (code, stdout, _stderr) = run(&["--json", "validate", "-"], bundle.as_bytes());
     assert_eq!(code, 0);
     let env = parse_envelope(&stdout);
     assert!(env.diagnostics.is_empty());
@@ -170,7 +174,7 @@ fn validate_escalates_to_exit_two_on_error_severity_diagnostics() {
                         "persons": [ { "person_id": p, "role": "spouse" } ] },
              "children": [ { "person_id": p } ] }
     });
-    let (code, stdout, _stderr) = run(&["validate", "--input", "-"], flat.to_string().as_bytes());
+    let (code, stdout, _stderr) = run(&["--json", "validate", "-"], flat.to_string().as_bytes());
     assert_eq!(code, 2, "expected exit 2 on error-severity diagnostic");
     let env = parse_envelope(&stdout);
     assert_eq!(env.status, Status::Ok);
@@ -182,7 +186,7 @@ fn validate_escalates_to_exit_two_on_error_severity_diagnostics() {
 
 #[test]
 fn validate_input_that_is_not_json_yields_exit_one() {
-    let (code, stdout, _stderr) = run(&["validate", "--input", "-"], b"definitely not JSON");
+    let (code, stdout, _stderr) = run(&["--json", "validate", "-"], b"definitely not JSON");
     assert_eq!(code, 1);
     let env = parse_envelope(&stdout);
     assert_eq!(env.status, Status::Error);
@@ -200,14 +204,16 @@ fn add_person_via_files_updates_the_bundle() {
     std::fs::write(&bundle_path, axgf_rs::create_bundle(None).data.to_string()).unwrap();
     std::fs::write(&entity_path, person("Jean").to_string()).unwrap();
 
+    // New syntax: `add <kind> <input> --data <entity>`. Without -o the
+    // input is edited in place; the envelope printed under --json still
+    // carries the id and updated bundle.
     let (code, stdout, _stderr) = run(
         &[
+            "--json",
             "add",
-            "--input",
-            bundle_path.to_str().unwrap(),
-            "--kind",
             "person",
-            "--entity",
+            bundle_path.to_str().unwrap(),
+            "--data",
             entity_path.to_str().unwrap(),
         ],
         b"",
@@ -233,12 +239,11 @@ fn update_missing_entity_reports_entity_not_found_and_exits_one() {
 
     let (code, stdout, _stderr) = run(
         &[
+            "--json",
             "update",
-            "--input",
-            bundle_path.to_str().unwrap(),
-            "--kind",
             "person",
-            "--entity",
+            bundle_path.to_str().unwrap(),
+            "--data",
             entity_path.to_str().unwrap(),
         ],
         b"",
@@ -278,11 +283,10 @@ fn delete_defaults_to_reject_policy() {
 
     let (code, stdout, _stderr) = run(
         &[
+            "--json",
             "delete",
-            "--input",
-            bundle_path.to_str().unwrap(),
-            "--kind",
             "person",
+            bundle_path.to_str().unwrap(),
             "--id",
             &a_id,
         ],
@@ -310,8 +314,8 @@ fn export_writes_zip_to_output_path_and_import_round_trips() {
 
     let (code, stdout, _stderr) = run(
         &[
+            "--json",
             "export",
-            "--input",
             bundle_path.to_str().unwrap(),
             "--output",
             zip_path.to_str().unwrap(),
@@ -326,7 +330,7 @@ fn export_writes_zip_to_output_path_and_import_round_trips() {
     assert!(zip_bytes.starts_with(b"PK"), "not a ZIP archive");
 
     // Import back through the CLI, from stdin.
-    let (code, stdout, _stderr) = run(&["import", "--input", "-"], &zip_bytes);
+    let (code, stdout, _stderr) = run(&["--json", "import", "-"], &zip_bytes);
     assert_eq!(code, 0);
     let env = parse_envelope(&stdout);
     assert_eq!(env.status, Status::Ok);
@@ -339,8 +343,12 @@ fn export_writes_zip_to_output_path_and_import_round_trips() {
 
 #[test]
 fn dedup_of_empty_bundle_is_a_no_op_ok() {
-    let flat = axgf_rs::create_bundle(None).data.to_string();
-    let (code, stdout, _stderr) = run(&["dedup", "--input", "-"], flat.as_bytes());
+    // dedup writes back in place, so send an actual file rather than
+    // stdin (there's no in-place destination for a `-` input).
+    let dir = tempdir();
+    let bundle_path = dir.join("bundle.json");
+    std::fs::write(&bundle_path, axgf_rs::create_bundle(None).data.to_string()).unwrap();
+    let (code, stdout, _stderr) = run(&["--json", "dedup", bundle_path.to_str().unwrap()], b"");
     assert_eq!(code, 0);
     let env = parse_envelope(&stdout);
     assert_eq!(env.data["merged_persons"], 0);
@@ -366,7 +374,7 @@ fn convert_gedcom_of_minimal_ged_produces_persons() {
                 1 NAME Jean /Pierre-Leonard/\n\
                 1 SEX M\n\
                 0 TRLR\n";
-    let (code, stdout, _stderr) = run(&["convert-gedcom", "--input", "-"], ged);
+    let (code, stdout, _stderr) = run(&["--json", "convert-gedcom", "-"], ged);
     assert_eq!(code, 0, "convert-gedcom exit code");
     let env = parse_envelope(&stdout);
     assert_eq!(env.status, Status::Ok);
