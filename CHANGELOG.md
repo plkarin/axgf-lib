@@ -14,28 +14,48 @@ existing library consumers upgrade transparently.
 
 ### Added
 
-- **`axgf` command-line interface** behind the new `cli` Cargo feature.
-  One subcommand per V1 boundary function:
-  - `create` — new empty bundle stamped with the current spec version.
-  - `import` — decode a `.axgf` archive into flat JSON.
-  - `export` — encode flat JSON back into a `.axgf` archive
-    (optionally writing the ZIP bytes to `--output`).
-  - `inspect` — manifest + freshly computed stats.
-  - `validate` — structural + semantic report (exit code `2` on
-    error-severity diagnostics, so CI can gate on it without
+- **`axgf` command-line interface**, on by default so plain
+  `cargo install axgf-rs` produces the binary. One subcommand per V1
+  boundary function:
+  - `create` — new empty bundle. Requires `-o/--output`.
+  - `import` — decode a `.axgf` archive and print a summary
+    (read-only).
+  - `export` — rebuild a bundle. `-o` chooses `.axgf` (ZIP) or `.json`
+    (flat) by extension.
+  - `inspect` — manifest + freshly computed stats (read-only).
+  - `validate` — structural + semantic report (read-only, exit code `2`
+    on error-severity diagnostics so CI can gate on it without
     misinterpreting an invalid bundle as a broken pipeline).
-  - `add`, `update`, `delete` — CRUD; `--policy` picks
-    `reject|cascade|orphan` for the delete's referential integrity.
+  - `add`, `update`, `delete` — CRUD, taking `<KIND> <PATH>` as
+    positionals. `--policy` picks `reject|cascade|orphan` for the
+    delete's referential integrity.
   - `dedup` — safe merges + `MANUAL_REVIEW_REQUIRED` flags.
-  - `convert-gedcom` — GEDCOM 5.5.1 → flat AXGF, with
-    `--confidence` and `--place-lang` controls.
-  Every subcommand emits the same JSON envelope on stdout; every file
-  argument accepts `-` for stdin so calls compose through `jq` in a shell
-  pipeline. Install with `cargo install axgf-rs --features cli`, or grab
-  a pre-built binary from GitHub Releases.
+  - `convert-gedcom` — GEDCOM 5.5.1 → AXGF, with `--confidence` and
+    `--place-lang` controls. Requires `-o`.
+- **Human-first output.** Default: concise summary on stdout, grouped
+  diagnostic counts on stderr, error diagnostics on stderr as
+  `CODE: message`. `--json`: raw envelope on stdout, nothing else,
+  pipes cleanly through `jq`. `-q/--quiet`: no stdout; result in the
+  exit code.
+- **Positional input paths.** Every command that reads a bundle takes
+  it as a positional `PATH`; `--input <PATH>` is kept as a
+  back-compatible alias for this unreleased 0.2.0. `-` reads bytes
+  from stdin.
+- **`-o/--output <PATH>` on every mutating command** (`create`,
+  `convert-gedcom`, `add`, `update`, `delete`, `dedup`, `export`).
+  The output form is chosen by extension: `.axgf` writes the ZIP,
+  anything else writes flat JSON. When `-o` is omitted on a command
+  that read a file, the input is edited *in place* — atomically, via
+  a sibling tempfile + rename, so a mid-write failure never leaves a
+  truncated bundle behind.
+- **Transparent `.axgf` input.** Any command that reads a bundle now
+  accepts a `.axgf` archive directly (imported on the fly) or a
+  `.json` flat bundle, driven by extension. This is what makes
+  `axgf validate family.axgf` and `axgf add person family.axgf …`
+  work without a manual import step.
 - **Multi-platform binary release automation.**
   `.github/workflows/release.yml` triggers on `v*` tag pushes, gates on
-  `cargo test --features cli`, and cross-builds `axgf` for six targets:
+  `cargo test`, and cross-builds `axgf` for six targets:
   `x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl` (statically
   linked, runs on every Linux distribution regardless of libc),
   `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`,
@@ -50,6 +70,14 @@ existing library consumers upgrade transparently.
 
 ### Changed
 
+- **`cli` is now a default Cargo feature.** Plain `cargo install
+  axgf-rs` produces the `axgf` binary; library consumers who want to
+  avoid the `clap` dependency opt out with
+  `default-features = false, features = ["gedcom"]`.
+- **`--family-name` renamed to `--name` on `create`.** The old spelling
+  is kept as an alias.
+- **`--entity` renamed to `--data` on `add`/`update`.** The old
+  spelling is kept as an alias.
 - **`Cargo.lock` is now tracked** so binary releases are reproducible
   from a given tag. `--locked` is used throughout the release workflow.
   Library consumers pulling from crates.io are unaffected: `cargo

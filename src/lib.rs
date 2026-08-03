@@ -72,11 +72,12 @@
 //!
 //! ## Command-line binary
 //!
-//! The same core is shipped as a standalone `axgf` executable behind the
-//! `cli` Cargo feature — one subcommand per function documented below,
-//! reading and writing the same [`boundary::envelope::Envelope`] shape on
-//! stdin/stdout. See [`docs/CLI.md`] for the full reference. Install with
-//! `cargo install axgf-rs --features cli`.
+//! The same core is shipped as a standalone `axgf` executable. The `cli`
+//! Cargo feature is on by default so `cargo install axgf-rs` produces
+//! the binary; each subcommand prints a concise human summary by default
+//! and the raw [`boundary::envelope::Envelope`] under `--json`. See
+//! [`docs/CLI.md`] for the full reference. Library-only consumers can
+//! opt out with `default-features = false, features = ["gedcom"]`.
 //!
 //! ## Further reading
 //!

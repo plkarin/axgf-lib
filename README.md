@@ -67,48 +67,66 @@ The pre-1.0 version signals that the public API may still change. The AXGF **for
 
 ### Command-line binary
 
-The same core is also shipped as a standalone `axgf` executable behind the
-`cli` feature. See the **[Command line](#command-line)** section below for
+The same core is shipped as a standalone `axgf` executable. Because the
+`cli` feature is on by default, plain `cargo install axgf-rs` produces
+the binary. See the **[Command line](#command-line)** section below for
 the fast path.
 
 ```sh
-cargo install axgf-rs --features cli
+cargo install axgf-rs
 ```
 
 Pre-built binaries for Linux (musl static + glibc), macOS, and Windows are
-attached to each tagged release on GitHub.
+attached to each tagged release on GitHub. Library-only consumers who
+want to avoid the `clap` dependency can opt out with
+`default-features = false, features = ["gedcom"]`.
 
 ---
 
 ## Command line
 
 The `axgf` binary is the fastest way to evaluate the project. Every V1
-boundary function is a subcommand; each prints the uniform JSON envelope
-on stdout so calls compose in a shell pipeline through `jq`.
+boundary function is a subcommand; each prints a concise human summary
+by default. Pass `--json` to receive the raw JSON envelope for piping
+through `jq`.
 
 ```console
-$ axgf create --family-name "Karin" | jq '.data.manifest'
-{
-  "axgf": "1.0",
-  "created_at": "2026-08-03T10:08:09Z",
-  "updated_at": "2026-08-03T10:08:09Z",
-  "stats": {
-    "persons": 0, "families": 0, "events": 0, "links": 0,
-    "occupations": 0, "sources": 0, "places": 0, "documents": 0
-  },
-  "family": { "name": "Karin" }
-}
+$ axgf convert-gedcom tests/fixtures/small.ged -o /tmp/t.axgf
+converted small.ged
+  persons       3
+  families      1
+  events        1
+  links         0
+  occupations   1
+  sources       1
+  places        2
+  documents     2
+wrote t.axgf (8 KiB)
 
-$ axgf convert-gedcom --input tree.ged \
-    | jq -c .data.bundle \
-    | tee tree.json \
-    | axgf validate --input - | jq '.data'
-{ "errors": 0, "warnings": 3, "infos": 0, "total": 3 }
+$ axgf validate /tmp/t.axgf
+validated t.axgf
+  errors                     0
+  warnings                   3
+  SCHEMA_VALIDATION_FAILED   3
 
-$ axgf inspect --input tree.json | jq .data.stats
-{ "persons": 3, "families": 1, "events": 1, "links": 0,
-  "occupations": 1, "sources": 1, "places": 2, "documents": 2 }
+$ axgf inspect /tmp/t.axgf
+t.axgf
+  axgf          1.0
+  persons       3
+  families      1
+  events        1
+  links         0
+  occupations   1
+  sources       1
+  places        2
+  documents     2
 ```
+
+Read-only commands (`inspect`, `validate`, `import`) never touch the
+input file. Mutating commands (`create`, `convert-gedcom`, `add`,
+`update`, `delete`, `dedup`, `export`) take `-o/--output` and edit their
+input in place when it is omitted — atomically, so a mid-write failure
+never leaves you with a truncated bundle.
 
 The exit code is `0` on success, `1` when the operation is refused, and
 `2` when `axgf validate` reports at least one error-severity diagnostic

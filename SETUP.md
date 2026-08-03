@@ -234,13 +234,16 @@ Both must pass. A failure in either blocks release.
 ## 7. Feature flags
 
 ```bash
-# Default build (includes GEDCOM conversion)
+# Default build (includes GEDCOM conversion and the CLI)
 cargo build
 
 # CLI binary (built as target/release/axgf)
-cargo build --features cli --release
+cargo build --release
 # Or install directly from crates.io:
-cargo install axgf-rs --features cli
+cargo install axgf-rs
+
+# Library-only build (no `clap` dependency)
+cargo build --no-default-features --features gedcom
 
 # WebAssembly
 rustup target add wasm32-unknown-unknown
@@ -259,32 +262,38 @@ cargo build --features mobile
 ### CLI tests
 
 The `tests/cli.rs` suite spawns the freshly-built `axgf` binary and asserts
-on its stdout envelope; the file is elided when the `cli` feature is off, so
-plain `cargo test` keeps the 82-test baseline unchanged. To include it:
+on its stdout envelope. The `cli` feature is on by default, so plain
+`cargo test` runs the whole 82-test baseline **plus** the 14 CLI
+integration tests:
 
 ```bash
-cargo test --features cli    # baseline + 14 CLI integration tests
+cargo test    # baseline + 14 CLI integration tests
+```
+
+To skip the CLI tests entirely (library-only maintainers):
+
+```bash
+cargo test --no-default-features --features gedcom
 ```
 
 ## 8. Building and running the CLI locally
 
 The `axgf` binary lives in `src/bin/axgf.rs` and is registered with
-`required-features = ["cli"]`, so it is not built unless the feature is
-enabled.
+`required-features = ["cli"]`. The `cli` feature is in the default set,
+so the binary is built by every `cargo build`.
 
 ```bash
 # Debug build (fast to iterate; slow to run)
-cargo build --features cli
+cargo build
 ./target/debug/axgf --help
 
 # Release build (used for distribution)
-cargo build --features cli --release
+cargo build --release
 ./target/release/axgf --version
 
 # Quick smoke test against the vendored GEDCOM fixture
-./target/release/axgf convert-gedcom --input tests/fixtures/small.ged \
-    | jq -c .data.bundle \
-    | ./target/release/axgf validate --input -
+./target/release/axgf convert-gedcom tests/fixtures/small.ged -o /tmp/t.axgf
+./target/release/axgf validate /tmp/t.axgf
 ```
 
 Full CLI reference — every subcommand, every flag, real captured output,
