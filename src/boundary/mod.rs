@@ -10,6 +10,8 @@
 //!   containing the manifest and one map per entity kind.
 //! - [`lifecycle`] — the ZIP-facing operations: `create_bundle`,
 //!   `import_bundle`, `export_bundle`, `inspect`.
+//! - [`stream`] — the payload-at-a-time counterparts to `import_bundle` and
+//!   `export_bundle`, for bundles whose media does not fit in memory.
 //!
 //! Everything inside [`crate::logic`] operates on strongly-typed
 //! [`crate::model`] structs; the boundary is the translation point between
@@ -18,3 +20,4 @@
 pub mod envelope;
 pub mod flat;
 pub mod lifecycle;
+pub mod stream;

@@ -34,7 +34,7 @@ pub const EMBEDDED_SCHEMA: &str = include_str!("../../schema/axgf-1.0.schema.jso
 
 /// The eight entity kinds and their on-disk directory names. Order
 /// matches the manifest stats field order.
-const ENTITY_DIRS: [(&str, &str); 8] = [
+pub(crate) const ENTITY_DIRS: [(&str, &str); 8] = [
     ("persons", "persons"),
     ("families", "families"),
     ("events", "events"),
@@ -272,13 +272,17 @@ pub fn import_bundle(zip_bytes: &[u8]) -> Envelope {
         places,
         documents,
         attachments,
+        // The non-streaming path carries every payload inline, so it never
+        // declares an external one. This is what keeps `import_bundle` →
+        // `export_bundle` working exactly as it always has.
+        external_payloads: BTreeMap::new(),
         extra: BTreeMap::new(),
     };
     let value = serde_json::to_value(&bundle).unwrap_or(Value::Null);
     Envelope::ok(value)
 }
 
-fn read_json<R: Read>(reader: &mut R) -> Result<Value, Envelope> {
+pub(crate) fn read_json<R: Read>(reader: &mut R) -> Result<Value, Envelope> {
     let mut buf = String::new();
     if let Err(e) = reader.read_to_string(&mut buf) {
         return Err(Envelope::error(
@@ -294,7 +298,7 @@ fn read_json<R: Read>(reader: &mut R) -> Result<Value, Envelope> {
 /// `(collection, uuid)`. Returns `None` for paths that are not a
 /// per-entity file under one of the seven per-file directories
 /// (documents are handled separately via `documents/index.json`).
-fn split_entity_path(name: &str) -> Option<(&str, &str)> {
+pub(crate) fn split_entity_path(name: &str) -> Option<(&str, &str)> {
     for (collection, dir) in ENTITY_DIRS.iter().take(7) {
         let prefix = format!("{dir}/");
         if let Some(rest) = name.strip_prefix(&prefix) {
@@ -320,6 +324,30 @@ pub fn export_bundle(flat_json: &str) -> Envelope {
     };
     if let Err(env) = check_manifest_version(&bundle.manifest) {
         return env;
+    }
+
+    // This function can only write payloads it can see, and a bundle whose
+    // payloads were streamed out carries none. Writing it would produce a
+    // structurally valid archive with every photograph missing — the kind of
+    // data loss that is discovered months later. Refuse, and name the
+    // function that does work.
+    if !bundle.external_payloads.is_empty() {
+        let n = bundle.external_payloads.len();
+        let sample: Vec<&str> = bundle
+            .external_payloads
+            .keys()
+            .take(3)
+            .map(String::as_str)
+            .collect();
+        return Envelope::error(
+            DiagnosticCode::PayloadsExternal,
+            format!(
+                "bundle declares {n} external payload(s) whose bytes are not present \
+                 (e.g. {sample:?}); export_bundle would write an archive with that media \
+                 missing. Use export_bundle_streaming, which asks the caller for each \
+                 payload in turn."
+            ),
+        );
     }
 
     // Recompute stats and refresh updated_at. Compute stats first to

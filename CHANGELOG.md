@@ -5,6 +5,66 @@ All notable changes to `axgf-rs` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-08-17
+
+Streaming payload access, for bundles whose media does not fit in memory.
+Purely additive: every existing function behaves exactly as it did, the MSRV
+(**1.88.0**) is unchanged, and a bundle that never streams is byte-identical
+to what 0.2.0 produced. The minor bump signals the new capability rather
+than any break.
+
+### Added
+
+- **`import_bundle_textual(src)`** — the manifest and all eight entity
+  collections, document metadata intact, with **no payload decoded**. Each
+  payload is recorded by path, size and CRC-32 in the new
+  `external_payloads` field, all of which the ZIP central directory already
+  carried.
+- **`import_bundle_streaming(src, on_payload)`** — the same textual result,
+  plus one callback per payload, in archive order. The callback receives a
+  `Payload`: a live `Read` over that entry exposing `path()`, `size()` and
+  `crc32()` before anything is decompressed, with `copy_to` for a bounded
+  move and `read_to_end` when the whole thing is wanted.
+- **`export_bundle_streaming(flat_json, dest, supply)`** — writes the archive
+  into a caller-provided `Write + Seek`, asking `supply` for one payload at a
+  time via a `PayloadSlot`. Because the output goes to `dest` rather than
+  into a base64 string, the finished bundle never exists in memory either.
+  Bundles still carrying inline `attachments` export correctly too, so a
+  caller can convert incrementally.
+- **`FlatBundle::external_payloads`** — the marker that says "this bundle's
+  payloads live elsewhere". Skipped when empty, so it is invisible to
+  everyone else.
+- **Three diagnostic codes**: `PAYLOADS_EXTERNAL`, `PAYLOAD_SOURCE_FAILED`,
+  `PAYLOAD_SINK_FAILED`.
+
+Measured on 32 payloads totalling 70 MiB, largest 8 MiB — peak heap:
+
+| operation | streaming | non-streaming |
+|---|---|---|
+| import | 0.21 MiB (`copy_to`) / 8.15 MiB (`read_to_end`) | 186.80 MiB |
+| export | 0.53 MiB | 355.13 MiB |
+
+Peak is bounded by the largest single payload, or by a 64 KiB copy buffer if
+the caller never holds one whole — never by their sum.
+
+### Changed
+
+- **`export_bundle` now refuses a bundle that declares `external_payloads`**,
+  with a `PAYLOADS_EXTERNAL` error naming `export_bundle_streaming`. It can
+  only write payloads it can see, and a bundle whose payloads were streamed
+  out carries none; writing it would produce a structurally valid archive
+  with every photograph silently missing. No bundle produced by 0.2.0 can
+  carry the marker, so no existing caller is affected. The marker survives
+  CRUD, so editing entities in between cannot launder the refusal away.
+
+### Notes
+
+- No async, no filesystem access, no hidden state: the streaming functions
+  take byte streams the caller owns and retain nothing between calls. WASM
+  remains viable.
+- Streaming is never the default. `import_bundle` and `export_bundle` are
+  untouched and remain the simple path.
+
 ## [0.2.0] — 2026-08-03
 
 The headline change is a full command-line interface plus the release

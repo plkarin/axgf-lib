@@ -65,7 +65,10 @@ Bundles cross the boundary as flat JSON:
   "sources":      { ... },
   "places":       { ... },
   "documents":    { ... },
-  "attachments":  { "documents/files/{uuid}.pdf": "<base64>", ... }   // optional
+  "attachments":  { "documents/files/{uuid}.pdf": "<base64>", ... },  // optional
+  "external_payloads": {                                             // optional
+    "documents/files/{uuid}.jpg": { "size_bytes": 184320, "crc32": 2748110042 }, ...
+  }
 }
 ```
 
@@ -73,11 +76,22 @@ The eight collections are always present in serialized output (empty `{}`
 when nothing has landed yet). Unknown top-level fields survive a round-trip
 untouched - forward-compatibility is a hard requirement.
 
+`attachments` and `external_payloads` are two ways of saying where a
+payload's bytes are. `attachments` carries them inline as base64;
+`external_payloads` says they are somewhere the caller is keeping them and
+records only what the archive already knew - path, size, CRC-32. A bundle
+produced by the non-streaming `import_bundle` never has the second, so
+nothing about existing code changes. A bundle produced by a streaming import
+has only the second, and `export_bundle` **refuses** it rather than writing
+an archive with the media missing. See
+[Streaming payloads](#streaming-payloads).
+
 ---
 
 ## Table of contents
 
 - [Lifecycle](#lifecycle) - `create_bundle`, `import_bundle`, `export_bundle`, `inspect`
+- [Streaming payloads](#streaming-payloads) - `import_bundle_textual`, `import_bundle_streaming`, `export_bundle_streaming`
 - [Validation](#validation) - `validate`
 - [CRUD](#crud) - `add_entity`, `update_entity`, `delete_entity`
 - [Cleanup](#cleanup) - `deduplicate`
@@ -327,6 +341,291 @@ if d["manifest"]["stats"] != d["stats"] {
               d["manifest"]["stats"], d["stats"]);
 }
 ```
+
+---
+
+## Streaming payloads
+
+`import_bundle` decodes every payload into base64 inside the flat JSON
+before the caller sees anything, and `export_bundle` needs them all present
+to write. On a bundle carrying 417 MB of media that costs about 1.5 GB to
+open and 2.6 GB to save - measured, on a real archive. Base64 inflates by a
+third, and the encoded and decoded forms coexist while the map is built.
+
+These three functions are the payload-at-a-time alternative. They are an
+addition: `import_bundle` and `export_bundle` are unchanged, and a caller who
+wants the whole bundle as one JSON value still gets exactly that.
+
+Measured on a fixture of 32 payloads totalling 70 MiB, largest 8 MiB
+(`cargo test --test streaming_memory_large -- --ignored --nocapture`):
+
+| operation | peak heap |
+|---|---|
+| `import_bundle_streaming`, `copy_to` | 0.21 MiB |
+| `import_bundle_streaming`, `read_to_end` | 8.15 MiB |
+| `import_bundle_textual` | 0.16 MiB |
+| `import_bundle` | 186.80 MiB |
+| `export_bundle_streaming` | 0.53 MiB |
+| `export_bundle` | 355.13 MiB |
+
+Peak is bounded by the largest single payload, or by a 64 KiB copy buffer if
+the caller never holds one whole. It is never bounded by their sum.
+
+---
+
+### `import_bundle_textual(src: impl Read + Seek) -> Envelope`
+
+The manifest and all eight collections, with document metadata intact, and
+not one payload byte decoded. Each payload is recorded in
+`external_payloads` by path, size and CRC-32 - all of which the ZIP central
+directory already carried, so recording them is free.
+
+`src` is any seekable byte source. The library does not open it and never
+touches the filesystem.
+
+**Diagnostics**: `ZIP_READ_ERROR`, `INVALID_JSON`, `INVALID_BUNDLE_STRUCTURE`,
+`UNSUPPORTED_SPEC_VERSION`, plus an *informational* `PAYLOADS_EXTERNAL` when
+the bundle had payloads.
+
+**data on success**: the flat bundle JSON, without `attachments`.
+
+#### Demo A - how big is this archive before I commit to opening it
+
+*Reproduces: a server deciding whether a bundle is worth loading, and a UI
+showing what it holds, without paying for the media.*
+
+```rust
+use axgf_rs::import_bundle_textual;
+
+let file = std::fs::File::open("family.axgf")?;
+let env  = import_bundle_textual(file);
+
+let media: u64 = env.data["external_payloads"]
+    .as_object()
+    .map(|m| m.values().filter_map(|p| p["size_bytes"].as_u64()).sum())
+    .unwrap_or(0);
+println!("{} people, {} bytes of media still on disk",
+         env.data["persons"].as_object().unwrap().len(), media);
+```
+
+```json
+{
+  "status": "ok",
+  "data": {
+    "manifest": { "axgf": "1.0", "stats": { "documents": 2, ... } },
+    "documents": {
+      "d1f0...": { "type": "document", "filename": "birth-cert-1923.pdf",
+                   "status": "present",
+                   "file": { "path": "documents/files/d1f0....pdf",
+                             "size_bytes": 184320, "sha256": "a3f8..." } }
+    },
+    "external_payloads": {
+      "documents/files/d1f0....pdf": { "size_bytes": 184320, "crc32": 2748110042 }
+    }
+  },
+  "diagnostics": [
+    { "code": "PAYLOADS_EXTERNAL", "severity": "info",
+      "message": "1 payload(s), 184320 byte(s), were streamed out ..." }
+  ]
+}
+```
+
+---
+
+### `import_bundle_streaming(src, on_payload) -> Envelope`
+
+```rust
+pub fn import_bundle_streaming<R, F>(src: R, on_payload: F) -> Envelope
+where
+    R: Read + Seek,
+    F: FnMut(&mut Payload<'_>) -> std::io::Result<()>;
+```
+
+The textual half exactly as `import_bundle_textual` returns it, plus one call
+to `on_payload` per payload, in archive order. A `Payload` is a live `Read`
+positioned at the start of that entry, and it exposes `path()`, `size()` and
+`crc32()` before a byte is decompressed. Nothing is retained between calls.
+
+Control is inverted rather than exposed as an iterator because a
+`ZipArchive` lends each entry from `&mut self`, so two entries cannot coexist;
+a closure sidesteps that and leaves the library with no state to leak.
+
+**Diagnostics**: as `import_bundle_textual`, plus `PAYLOAD_SINK_FAILED` when
+`on_payload` returns an error - which aborts the import.
+
+#### Demo A - extract a media archive to a disk cache
+
+*Reproduces: axgf-cms opening a 417 MB bundle at startup. `copy_to` moves each
+payload to disk through a fixed buffer, so the process never holds one whole.*
+
+```rust
+use axgf_rs::import_bundle_streaming;
+
+let file = std::fs::File::open("family.axgf")?;
+let env = import_bundle_streaming(file, |payload| {
+    let name = payload.path().replace('/', "_");
+    let mut out = std::fs::File::create(cache_dir.join(name))?;
+    payload.copy_to(&mut out)?;     // 64 KiB at a time
+    Ok(())
+});
+let flat = env.data.to_string();    // textual only; no base64 anywhere
+```
+
+#### Demo B - take only the photographs, skip everything else
+
+*Reproduces: a thumbnailer that wants images and has no use for the PDFs.
+A payload the closure does not read is skipped, not buffered.*
+
+```rust
+let env = import_bundle_streaming(file, |payload| {
+    if payload.path().ends_with(".jpg") && payload.size() < 20 * 1024 * 1024 {
+        let bytes = payload.read_to_end()?;
+        make_thumbnail(payload.path(), &bytes);
+    }
+    Ok(())                          // anything else: fall through, skipped
+});
+```
+
+#### Demo C - the sink fails
+
+*Reproduces: the disk filling up mid-import. The import stops at that payload
+rather than half-populating a cache and reporting success.*
+
+```rust
+let env = import_bundle_streaming(file, |p| {
+    Err(std::io::Error::other("no space left on device"))
+});
+```
+
+```json
+{
+  "status": "error",
+  "data": null,
+  "diagnostics": [
+    { "code": "PAYLOAD_SINK_FAILED", "severity": "error",
+      "message": "caller could not accept payload \"documents/files/d1f0....pdf\": no space left on device" }
+  ]
+}
+```
+
+---
+
+### `export_bundle_streaming(flat_json, dest, supply) -> Envelope`
+
+```rust
+pub fn export_bundle_streaming<W, F>(flat_json: &str, dest: W, supply: F) -> Envelope
+where
+    W: Write + Seek,
+    F: FnMut(&mut PayloadSlot<'_>) -> std::io::Result<()>;
+```
+
+Writes the archive into `dest` - not into a base64 string, so the finished
+bundle never exists in memory either. For each path in `external_payloads`,
+`supply` is called with a `PayloadSlot`, which is a `Write` feeding straight
+into the open ZIP entry and which reports `path()`, `expected_size()` and
+`expected_crc32()`. Payloads still carried inline in `attachments` are written
+from there, so a part-converted bundle exports correctly.
+
+Stats are recomputed and the canonical schema embedded, exactly as
+`export_bundle` does.
+
+**data on success**:
+`{ "size_bytes": u, "payloads_written": u, "payload_bytes": u }`.
+
+**Diagnostics**: `ZIP_WRITE_ERROR`, `UNSUPPORTED_SPEC_VERSION`,
+`INVALID_BUNDLE_STRUCTURE` (a path declared both inline and external), and
+`PAYLOAD_SOURCE_FAILED` - as an error when `supply` fails or writes nothing
+for a declared payload, as a warning when it writes a different number of
+bytes than the bundle recorded.
+
+#### Demo A - save an edited bundle, media served from the cache
+
+*Reproduces: the "Save" button in a CMS whose payloads live on disk. Peak
+memory is a copy buffer, whatever the archive weighs.*
+
+```rust
+use axgf_rs::export_bundle_streaming;
+
+let out = std::fs::File::create("family.axgf.tmp")?;
+let env = export_bundle_streaming(&flat_json, out, |slot| {
+    let name = slot.path().replace('/', "_");
+    let src  = std::fs::File::open(cache_dir.join(name))?;
+    slot.write_all_from(src)?;      // 64 KiB at a time
+    Ok(())
+});
+std::fs::rename("family.axgf.tmp", "family.axgf")?;   // caller's I/O
+```
+
+```json
+{
+  "status": "ok",
+  "data": { "size_bytes": 436471099, "payloads_written": 408,
+            "payload_bytes": 440469475 },
+  "diagnostics": []
+}
+```
+
+#### Demo B - a payload the caller cannot produce
+
+*Reproduces: a cache entry deleted behind the application's back. Refusing is
+the whole point: the alternative is an archive that looks fine and has lost a
+photograph.*
+
+```rust
+let env = export_bundle_streaming(&flat_json, out, |slot| {
+    let path = cache_dir.join(slot.path().replace('/', "_"));
+    let src = std::fs::File::open(&path)?;   // ENOENT propagates
+    slot.write_all_from(src)?;
+    Ok(())
+});
+```
+
+```json
+{
+  "status": "error",
+  "data": null,
+  "diagnostics": [
+    { "code": "PAYLOAD_SOURCE_FAILED", "severity": "error",
+      "message": "caller could not supply payload \"documents/files/d1f0....pdf\": No such file or directory (os error 2)" }
+  ]
+}
+```
+
+A `supply` that returns `Ok(())` without writing anything is refused the same
+way, with `... is declared as 184320 byte(s) but the caller wrote nothing;
+refusing to write a bundle with missing media`.
+
+---
+
+### The mistake this design makes impossible
+
+Stream the payloads out, then reach for the familiar `export_bundle`:
+
+```rust
+let flat = import_bundle_textual(file).data.to_string();
+// ... edit some entities ...
+let env = export_bundle(&flat);        // every photograph would be gone
+```
+
+`export_bundle` can only write payloads it can see, and this bundle carries
+none. Rather than produce a structurally valid archive with the media
+missing - the kind of loss discovered months later, when the backup that
+still had it has rotated away - it refuses before writing anything:
+
+```json
+{
+  "status": "error",
+  "data": null,
+  "diagnostics": [
+    { "code": "PAYLOADS_EXTERNAL", "severity": "error",
+      "message": "bundle declares 408 external payload(s) whose bytes are not present (e.g. [\"documents/files/00...jpg\", ...]); export_bundle would write an archive with that media missing. Use export_bundle_streaming, which asks the caller for each payload in turn." }
+  ]
+}
+```
+
+The marker lives in the flat JSON, and every CRUD operation round-trips it,
+so editing entities in between does not launder it away. A bundle that never
+streamed has no marker and is entirely unaffected.
 
 ---
 
@@ -1321,6 +1620,9 @@ diagnostics, so no error-mapping layer is needed.
 | `MANUAL_REVIEW_REQUIRED` | Deduplicate |
 | `ZIP_READ_ERROR` | Import |
 | `ZIP_WRITE_ERROR` | Export |
+| `PAYLOADS_EXTERNAL` | `export_bundle` (refusal); streaming import (info) |
+| `PAYLOAD_SOURCE_FAILED` | `export_bundle_streaming` |
+| `PAYLOAD_SINK_FAILED` | `import_bundle_streaming` |
 | `GEDCOM_PARSE_ERROR` | Convert (reserved) |
 | `GEDCOM_UNRECOGNIZED_TAG` | Convert |
 | `INTERNAL` | Fallback |

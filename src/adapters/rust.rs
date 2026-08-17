@@ -7,10 +7,13 @@
 //! wrappers meant for other languages.
 
 pub use crate::boundary::envelope::{Diagnostic, DiagnosticCode, Envelope, Severity, Status};
+pub use crate::boundary::flat::ExternalPayload;
+pub use crate::boundary::stream::{Payload, PayloadSlot};
 pub use crate::logic::crud::{DeletePolicy, EntityKind};
 pub use crate::{
-    add_entity, create_bundle, deduplicate, delete_entity, export_bundle, import_bundle, inspect,
-    update_entity, validate, CURRENT_SPEC_VERSION, SUPPORTED_SPEC_VERSIONS,
+    add_entity, create_bundle, deduplicate, delete_entity, export_bundle, export_bundle_streaming,
+    import_bundle, import_bundle_streaming, import_bundle_textual, inspect, update_entity,
+    validate, CURRENT_SPEC_VERSION, SUPPORTED_SPEC_VERSIONS,
 };
 
 #[cfg(feature = "gedcom")]

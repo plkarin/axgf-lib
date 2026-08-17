@@ -32,6 +32,25 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// One entry in [`FlatBundle::external_payloads`]: a payload that belongs to
+/// the bundle but whose bytes are **not** carried in the flat JSON.
+///
+/// The size and CRC-32 come from the source archive's central directory, so
+/// recording them costs nothing on import and lets a streaming export check
+/// that the caller supplied the payload it was asked for.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalPayload {
+    /// Uncompressed length in bytes, as declared by the source archive.
+    #[serde(default)]
+    pub size_bytes: u64,
+    /// CRC-32 of the uncompressed bytes, as declared by the source archive.
+    #[serde(default)]
+    pub crc32: u32,
+    /// Forward-compatibility bucket, mirroring [`FlatBundle::extra`].
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
 /// A working-form AXGF bundle: manifest plus one map per entity kind.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FlatBundle {
@@ -79,6 +98,26 @@ pub struct FlatBundle {
     /// structurally and MUST NOT appear here.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub attachments: BTreeMap<String, String>,
+
+    /// Payloads that belong to this bundle but whose bytes live **outside**
+    /// the flat JSON — written to disk by a streaming import, or otherwise
+    /// held by the caller. Keys are ZIP paths, exactly as in
+    /// [`FlatBundle::attachments`].
+    ///
+    /// This field is the marker that makes losing media impossible rather
+    /// than merely unlikely. It is populated by
+    /// [`crate::import_bundle_streaming`] and
+    /// [`crate::import_bundle_textual`], and it is the reason
+    /// [`crate::export_bundle`] — which can only write payloads it can see —
+    /// **refuses** a bundle carrying it, with a `PAYLOADS_EXTERNAL`
+    /// diagnostic. Use [`crate::export_bundle_streaming`], which asks the
+    /// caller for each of these paths in turn.
+    ///
+    /// Empty for every bundle produced by the non-streaming path, and skipped
+    /// when serializing, so bundles that never stream are byte-identical to
+    /// what earlier versions produced.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub external_payloads: BTreeMap<String, ExternalPayload>,
 
     /// Forward-compatibility bucket: any top-level field the current
     /// implementation does not understand round-trips unchanged.
