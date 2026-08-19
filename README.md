@@ -8,7 +8,7 @@
 [![Docs.rs](https://img.shields.io/docsrs/axgf-rs?style=flat-square)](https://docs.rs/axgf-rs)
 [![License](https://img.shields.io/badge/license-Apache--2.0-43d9a2?style=flat-square)](./LICENSE)
 [![Spec](https://img.shields.io/badge/spec-AXGF_1.0-764ba2?style=flat-square)](https://github.com/plkarin/axgf-spec)
-[![Status](https://img.shields.io/badge/status-alpha-ffd93d?style=flat-square)](https://github.com/plkarin/axgf-lib/issues)
+[![Status](https://img.shields.io/badge/status-published_%C2%B7_pre--1.0-43d9a2?style=flat-square)](https://github.com/plkarin/axgf-lib/issues)
 
 *One core. Every platform. The single point of contact for reading, writing, validating, and converting AXGF bundles — so no application ever re-implements the format.*
 
@@ -53,14 +53,14 @@ Or add it manually to `Cargo.toml`:
 
 ```toml
 [dependencies]
-axgf-rs = "0.1"
+axgf-rs = "0.3"
 ```
 
 Optional adapters are gated behind Cargo features (see the [Platform bindings](#platform-bindings) section for the full table):
 
 ```toml
 [dependencies]
-axgf-rs = { version = "0.1", features = ["wasm"] }
+axgf-rs = { version = "0.3", features = ["wasm"] }
 ```
 
 The pre-1.0 version signals that the public API may still change. The AXGF **format** version and the crate **version** are independent — this crate targets AXGF 1.0.
@@ -184,48 +184,91 @@ Diagnostic **codes** are part of the public contract and never change meaning ac
 | **Cleanup** | `deduplicate` | Safely merge duplicates; flag ambiguous cases for review |
 | **Conversion** | `convert_gedcom` | GEDCOM 5.5.1 bytes → flat AXGF bundle |
 
-Deliberately **not** in V1: graph traversal, a query engine, sessions, disk access, and rendering. Those belong to the client, or to a later version.
+### Streaming payloads (0.3.0)
+
+`import_bundle` decodes every binary payload to base64 inside the flat JSON and `export_bundle` needs them all present to write, so a media-heavy bundle costs several times its own size to open. These three take the payloads one at a time instead:
+
+| Group | Function | Purpose |
+|---|---|---|
+| **Streaming** | `import_bundle_textual` | Manifest + all eight entity collections, document *metadata* included, with **no payload decoded** — each is recorded by path, size and CRC-32 in `external_payloads` |
+| | `import_bundle_streaming` | The same textual result, plus one callback per payload: a live reader over that ZIP entry, opened and forgotten before the next |
+| | `export_bundle_streaming` | Writes the archive into a caller-supplied `Write + Seek`, asking for one payload at a time — so the finished bundle never exists in memory either |
+
+They exist because peak memory is then bounded by the largest single payload — or by a 64 KiB copy buffer if the caller never holds one whole — rather than by their sum: a real 417 MB bundle went from **1.53 GB to 29 MB** at axgf-cms startup.
+
+Streaming is never the default: `import_bundle` and `export_bundle` are unchanged, and a caller who wants the whole bundle as one JSON value still gets exactly that. A streamed import marks the bundle's `external_payloads`, and `export_bundle` refuses such a bundle with `PAYLOADS_EXTERNAL` rather than writing an archive with the media silently missing.
+
+Deliberately **not** in V1: graph traversal, a query engine, sessions, disk access, and rendering. Those belong to the client, or to a later version. Disk access stays out under streaming too — the library never opens a path; the caller supplies the reader and the writer it already owns, and the library only reads and writes through them.
 
 ---
 
 ## Quick start
 
+Create a bundle, add a person, validate it, write the archive, read it back.
+Compiled and run against `axgf-rs` 0.3.0 exactly as printed:
+
 ```rust
+use std::io::Cursor;
+
+use axgf_rs::boundary::envelope::Status;
 use axgf_rs::{
-    add_entity, create_bundle, export_bundle, import_bundle, validate,
-    logic::crud::EntityKind,
+    add_entity, create_bundle, export_bundle_streaming, import_bundle, validate, EntityKind,
 };
 
-// 1. Start an empty bundle.
-let empty = create_bundle(Some("Famille Pierre-Léonard"));
-let mut flat = serde_json::to_string(&empty.data).unwrap();
+fn main() {
+    // 1. Start an empty bundle. Every call takes JSON in and hands back an
+    //    envelope whose `data` is JSON out.
+    let created = create_bundle(Some("Famille Pierre-Léonard"));
+    assert_eq!(created.status, Status::Ok);
+    let mut flat = created.data.to_string();
 
-// 2. Add a person.
-let entity = r#"{
-  "identity": {
-    "name": {"display": "Jean Pierre-Léonard", "components": []},
-    "gender": {"value": "M"},
-    "is_living": false
-  }
-}"#;
-let added = add_entity(&flat, EntityKind::Person, entity);
-flat = serde_json::to_string(&added.data["bundle"]).unwrap();
+    // 2. Add a person. The library stamps `id`, `type` and `axgf_version`;
+    //    the updated bundle comes back under `data["bundle"]`.
+    let person = r#"{
+      "identity": {
+        "name": {"display": "Jean Pierre-Léonard", "components": []},
+        "gender": {"value": "M"},
+        "is_living": false
+      }
+    }"#;
+    let added = add_entity(&flat, EntityKind::Person, person);
+    assert_eq!(added.status, Status::Ok);
+    flat = added.data["bundle"].to_string();
 
-// 3. Validate — non-blocking; warnings and errors both surface in diagnostics.
-let report = validate(&flat);
-for d in &report.diagnostics {
-    eprintln!("{} {}: {}", d.code.as_str(), format!("{:?}", d.severity), d.message);
+    // 3. Validate. Non-blocking: warnings surface as diagnostics while the
+    //    status stays `Ok`.
+    let report = validate(&flat);
+    for d in &report.diagnostics {
+        println!("{} {:?}: {}", d.code.as_str(), d.severity, d.message);
+    }
+    assert_eq!(report.status, Status::Ok);
+
+    // 4. Write the `.axgf` archive. `export_bundle_streaming` writes into any
+    //    `Write + Seek` — an in-memory buffer here, a `File` in an
+    //    application — and asks the closure for one payload at a time. This
+    //    bundle carries no documents, so it is never called.
+    let mut archive = Cursor::new(Vec::new());
+    let exported = export_bundle_streaming(&flat, &mut archive, |_slot| Ok(()));
+    assert_eq!(exported.status, Status::Ok);
+    println!("wrote {} bytes", exported.data["size_bytes"]);
+
+    // 5. Round-trip: read the bytes back into the same flat working form.
+    let imported = import_bundle(archive.get_ref());
+    assert_eq!(imported.status, Status::Ok);
+    println!("persons: {}", imported.data["persons"].as_object().unwrap().len());
 }
-
-// 4. Export to .axgf bytes (base64 inside the envelope's data).
-let exp = export_bundle(&flat);
-let zip_b64 = exp.data["zip_base64"].as_str().unwrap();
-
-// 5. Round-trip: import the same bytes back into a flat bundle.
-let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, zip_b64).unwrap();
-let imp = import_bundle(&bytes);
-assert_eq!(imp.status.to_string(), "ok");  // pseudo — see the API docs
 ```
+
+```console
+$ cargo run
+wrote 5137 bytes        # varies by a byte or two — the manifest is timestamped
+persons: 1
+```
+
+The only dependencies are `axgf-rs` and `serde_json`. Step 4 uses the streaming
+writer because it needs no base64 decode on the way back; `export_bundle`
+returns the same archive as base64 inside the envelope when a single value is
+what you want.
 
 See [`docs/API.md`](./docs/API.md) for the full function-by-function surface.
 
@@ -244,14 +287,16 @@ The same core is exposed to every target through thin, logic-free adapters, sele
 
 ```toml
 [dependencies]
-axgf-rs = { version = "0.1", features = ["wasm"] }
+axgf-rs = { version = "0.3", features = ["wasm"] }
 ```
 
 ---
 
 ## Status
 
-**Alpha.** The API surface and the design contract are settled; implementation is in progress. Expect breaking changes before `1.0.0`. Track progress and open questions in [Issues](https://github.com/plkarin/axgf-lib/issues).
+**Pre-1.0, in production.** The V1 surface described above is complete and published on crates.io as `axgf-rs` 0.3.0, and [axgf-cms](https://github.com/plkarin/axgf-cms) runs on it: every bundle it serves is created, validated, imported and exported through this library. The API and the design contract are settled, and the diagnostic codes are a stable contract.
+
+The version stays below `1.0.0` because the Rust signatures may still change — 0.3.0 added functions without breaking any, but a future minor release may break one. Pin a minor version if that matters to you. The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
 
 ---
 
