@@ -1,9 +1,9 @@
 [package]
 name = "axgf-rs"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.88"
-description = "Reference implementation of the Axiom Genealogy Format (AXGF) 1.0 — a stateless JSON-boundary library for creating, validating, importing, exporting, and converting genealogy bundles (GEDCOM 5.5.1 supported)."
+description = "Reference implementation of the Axiom Genealogy Format (AXGF) 1.0 and 1.1 — a stateless JSON-boundary library for creating, validating, importing, exporting, and converting genealogy bundles, with the 1.1 person profile's vocabularies and registry (GEDCOM 5.5.1 supported)."
 license = "Apache-2.0"
 repository = "https://github.com/plkarin/axgf-lib"
 homepage = "https://github.com/plkarin/axgf-spec"
@@ -14,6 +14,7 @@ categories = ["data-structures", "parser-implementations", "encoding"]
 include = [
     "src/**/*",
     "schema/axgf-1.0.schema.json",
+    "schema/axgf-1.1.schema.json",
     "schema/README.md",
     "Cargo.toml",
     "LICENSE",

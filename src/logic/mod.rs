@@ -12,10 +12,14 @@
 //!   references, cycles, chronology conflicts, duplicate unique refs).
 //! - [`crud`] — add / update / delete for every entity kind, plus the
 //!   caller-selected referential-integrity [`crud::DeletePolicy`].
+//! - `profile` (crate-private) — what AXGF 1.1 asks a validator and a writer
+//!   to check: vocabularies, the semantic rules of SPEC_1.1 §7.3, and which
+//!   version a bundle and its entities must declare.
 //! - [`dedup`] — safe merging of duplicated persons and families, flagging
 //!   ambiguous cases with `MANUAL_REVIEW_REQUIRED` diagnostics rather than
 //!   performing them.
 
 pub mod crud;
 pub mod dedup;
+pub(crate) mod profile;
 pub mod validate;

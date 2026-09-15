@@ -13,7 +13,7 @@ pub use crate::logic::crud::{DeletePolicy, EntityKind};
 pub use crate::{
     add_entity, create_bundle, deduplicate, delete_entity, export_bundle, export_bundle_streaming,
     import_bundle, import_bundle_streaming, import_bundle_textual, inspect, update_entity,
-    validate, CURRENT_SPEC_VERSION, SUPPORTED_SPEC_VERSIONS,
+    validate, CURRENT_SPEC_VERSION, LATEST_SPEC_VERSION, SUPPORTED_SPEC_VERSIONS,
 };
 
 #[cfg(feature = "gedcom")]

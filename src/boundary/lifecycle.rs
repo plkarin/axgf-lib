@@ -28,9 +28,93 @@ use crate::{CURRENT_SPEC_VERSION, SUPPORTED_SPEC_VERSIONS};
 /// The canonical AXGF 1.0 JSON Schema, embedded from
 /// `schema/axgf-1.0.schema.json` in the crate root.
 ///
-/// This is written verbatim into every exported bundle at
+/// Written verbatim into every exported 1.0 bundle at
 /// `schema/axgf-1.0.schema.json` per SPEC §2 and §12.1.
 pub const EMBEDDED_SCHEMA: &str = include_str!("../../schema/axgf-1.0.schema.json");
+
+/// The canonical AXGF 1.1 JSON Schema, embedded from
+/// `schema/axgf-1.1.schema.json`. A superset of 1.0; written into every
+/// exported 1.1 bundle in place of the 1.0 file (SPEC_1.1 §2.3).
+pub const EMBEDDED_SCHEMA_1_1: &str = include_str!("../../schema/axgf-1.1.schema.json");
+
+/// The schema for a spec version, and the path a bundle of that version
+/// carries it at. `None` for a version this build does not support.
+pub fn schema_for(version: &str) -> Option<(&'static str, &'static str)> {
+    match version {
+        "1.0" => Some(("schema/axgf-1.0.schema.json", EMBEDDED_SCHEMA)),
+        "1.1" => Some(("schema/axgf-1.1.schema.json", EMBEDDED_SCHEMA_1_1)),
+        _ => None,
+    }
+}
+
+/// The schema file a manifest's declared version calls for, falling back to
+/// 1.0 for a manifest that has not been version-checked yet.
+pub(crate) fn schema_entry(manifest: &Value) -> (&'static str, &'static str) {
+    manifest
+        .get("axgf")
+        .and_then(Value::as_str)
+        .and_then(schema_for)
+        .unwrap_or(("schema/axgf-1.0.schema.json", EMBEDDED_SCHEMA))
+}
+
+/// Raise `manifest.axgf` to cover what the bundle holds (SPEC_1.1 §2.1).
+///
+/// The manifest's version becomes the newest of: what it declares, what any
+/// entity declares, and what any entity's or the manifest's own content
+/// requires. It is never lowered — removing the last 1.1 attribute leaves a
+/// valid 1.1 bundle, and a version that went down as well as up would make
+/// "what does this file claim to be" depend on the last edit. This is
+/// bookkeeping in the same sense as recomputing `stats`, and runs wherever
+/// that does.
+pub(crate) fn raise_manifest_version(b: &mut FlatBundle) {
+    use crate::logic::crud::EntityKind as K;
+    use crate::logic::profile::{manifest_uses_1_1, uses_1_1, version_rank};
+
+    let Some(current) = b.manifest.get("axgf").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(mut highest) = version_rank(current) else {
+        return;
+    };
+    let latest = version_rank(crate::LATEST_SPEC_VERSION).unwrap_or(highest);
+    let needs_1_1 = version_rank("1.1").unwrap_or(latest);
+    if manifest_uses_1_1(&b.manifest) {
+        highest = highest.max(needs_1_1);
+    }
+    let collections: [(K, &BTreeMap<String, Value>); 8] = [
+        (K::Person, &b.persons),
+        (K::Family, &b.families),
+        (K::Event, &b.events),
+        (K::Link, &b.links),
+        (K::Occupation, &b.occupations),
+        (K::Source, &b.sources),
+        (K::Place, &b.places),
+        (K::Document, &b.documents),
+    ];
+    for (kind, map) in collections {
+        for entity in map.values() {
+            if highest == latest {
+                break;
+            }
+            if let Some(r) = entity
+                .get("axgf_version")
+                .and_then(Value::as_str)
+                .and_then(version_rank)
+            {
+                highest = highest.max(r);
+            }
+            if uses_1_1(kind, entity) {
+                highest = highest.max(needs_1_1);
+            }
+        }
+    }
+    if let Value::Object(ref mut m) = b.manifest {
+        m.insert(
+            "axgf".into(),
+            Value::String(SUPPORTED_SPEC_VERSIONS[highest].to_string()),
+        );
+    }
+}
 
 /// The eight entity kinds and their on-disk directory names. Order
 /// matches the manifest stats field order.
@@ -353,6 +437,7 @@ pub fn export_bundle(flat_json: &str) -> Envelope {
     // Recompute stats and refresh updated_at. Compute stats first to
     // avoid borrowing bundle both mutably (as .manifest) and immutably
     // (for entity counts) in the same expression.
+    raise_manifest_version(&mut bundle);
     let fresh_stats = compute_stats(&bundle);
     let now = now_iso8601_utc();
     if let Value::Object(ref mut m) = bundle.manifest {
@@ -390,12 +475,9 @@ pub fn export_bundle(flat_json: &str) -> Envelope {
         return Envelope::error(DiagnosticCode::ZipWriteError, e);
     }
 
-    // Embed the canonical schema.
-    if let Err(e) = write_bytes_entry(
-        &mut zip,
-        "schema/axgf-1.0.schema.json",
-        EMBEDDED_SCHEMA.as_bytes(),
-    ) {
+    // Embed the canonical schema for the version the manifest declares.
+    let (schema_path, schema_text) = schema_entry(&bundle.manifest);
+    if let Err(e) = write_bytes_entry(&mut zip, schema_path, schema_text.as_bytes()) {
         return Envelope::error(DiagnosticCode::ZipWriteError, e);
     }
 

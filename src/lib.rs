@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! # axgf-rs — Reference implementation of the Axiom Genealogy Format (AXGF) 1.0
+//! # axgf-rs — Reference implementation of the Axiom Genealogy Format (AXGF) 1.0 and 1.1
 //!
 //! This crate is the canonical Rust implementation of the [AXGF specification].
 //! It provides a **stateless, data-oriented boundary**: every public function
@@ -27,8 +27,10 @@
 //!
 //! ## Module layout
 //!
-//! - [`model`] — Typed structs for the 8 entity kinds and the manifest.
-//!   Internal to the library; never crosses the boundary.
+//! - [`model`] — Typed structs for the 8 entity kinds and the manifest, and
+//!   in [`model::profile`] the AXGF 1.1 person profile: its claim shape, its
+//!   closed vocabularies and the registry of every attribute. Never crosses
+//!   the boundary.
 //! - [`logic`] — Pure value-core: validation, CRUD, deduplication. Operates on
 //!   [`model`] types, never on raw JSON.
 //! - [`boundary`] — The only layer that speaks JSON, ZIP and bytes: envelope
@@ -69,6 +71,44 @@
 //! let updated_bundle = added.data["bundle"].to_string();
 //! let checked = validate(&updated_bundle);
 //! assert_eq!(checked.status, Status::Ok);
+//! ```
+//!
+//! ## AXGF 1.1: the person profile
+//!
+//! AXGF 1.1 adds fourteen groups of person attributes — morphology, health,
+//! genomics, military service, personality and the rest. Each is a claim: a
+//! value with a date, a source and a confidence, or a series of them for
+//! anything that changes in a lifetime. They are data, not behaviour: no
+//! function changes, and a 1.1 attribute passes through [`add_entity`],
+//! [`validate`] and the exports like any other field. [`model::profile`]
+//! holds the specification's tables — every attribute with its value shape
+//! and sensitive class, every closed vocabulary — for a client to build
+//! forms and filters from, instead of keeping lists of its own.
+//!
+//! A bundle becomes 1.1 when it gets 1.1 content. [`create_bundle`] stamps
+//! `"1.0"`, and the first 1.1 attribute raises the manifest in the same call.
+//! A value outside its vocabulary is saved, and reported:
+//!
+//! ```
+//! use axgf_rs::model::profile::{registry, vocab, SensitiveClass};
+//! use axgf_rs::{add_entity, create_bundle, EntityKind};
+//!
+//! let bundle = create_bundle(None).data.to_string();
+//! let person = r#"{
+//!     "identity": {"name": {"display": "Zofia", "components": []},
+//!                  "gender": {"value": "F"}, "is_living": false},
+//!     "health": {"blood_group": {"value": "A", "confidence": 0.95},
+//!                "rhesus": {"value": "sideways"}}
+//! }"#;
+//! let added = add_entity(&bundle, EntityKind::Person, person);
+//! assert_eq!(added.data["bundle"]["manifest"]["axgf"], "1.1");
+//! assert_eq!(added.diagnostics.len(), 1);
+//! assert_eq!(added.diagnostics[0].code.as_str(), "OUT_OF_VOCABULARY");
+//!
+//! // What "rhesus" may hold, and that it is health data.
+//! let rhesus = registry::attribute("health.rhesus").unwrap();
+//! assert_eq!(rhesus.class, Some(SensitiveClass::Health));
+//! assert!(vocab::RHESUS.contains("negative"));
 //! ```
 //!
 //! ## Bundles too big for memory
@@ -129,15 +169,24 @@ pub mod convert;
 pub mod logic;
 pub mod model;
 
-/// AXGF specification versions this build understands. Every lifecycle
-/// operation verifies `manifest.axgf` against this set and refuses to proceed
-/// on an unrecognized value with a stable `UNSUPPORTED_SPEC_VERSION`
-/// diagnostic.
-pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["1.0"];
+/// AXGF specification versions this build understands, oldest first. Every
+/// lifecycle operation verifies `manifest.axgf` against this set and refuses
+/// to proceed on an unrecognized value with a stable
+/// `UNSUPPORTED_SPEC_VERSION` diagnostic.
+pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["1.0", "1.1"];
 
-/// The AXGF specification version this build writes when creating or
-/// re-exporting bundles.
+/// The AXGF specification version [`create_bundle`] stamps on a new bundle.
+///
+/// Still `"1.0"`, and deliberately: a bundle with no 1.1 content is a 1.0
+/// bundle, and stamping it 1.1 would make every 1.0 reader refuse a file it
+/// could read. A bundle is raised to [`LATEST_SPEC_VERSION`] by the first
+/// write that gives it 1.1 content (SPEC_1.1 §2.1), in the same step that
+/// refreshes its stats.
 pub const CURRENT_SPEC_VERSION: &str = "1.0";
+
+/// The newest AXGF specification version this build understands: `"1.1"`,
+/// the extended person profile (draft).
+pub const LATEST_SPEC_VERSION: &str = "1.1";
 
 // -------------------------------------------------------------------------
 // Public API surface

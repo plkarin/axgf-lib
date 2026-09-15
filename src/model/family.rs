@@ -93,9 +93,14 @@ pub struct FamilyChild {
     /// Confidence in \[0.0, 1.0\].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
-    /// Free-form note (e.g. adoption pedigree).
+    /// Free-form note.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// 1.1: how the child belongs to this family's union, a term of
+    /// [`super::profile::vocab::LINEAGE`]. Absent means the record does not
+    /// say, which is not the same as `biological` (SPEC_1.1 §5.13).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lineage: Option<String>,
     /// Forward-compatible extras.
     #[serde(flatten)]
     pub extra: Extra,
@@ -124,8 +129,10 @@ pub struct Family {
     /// Short description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// The union defining the family.
-    pub union: Union,
+    /// The union defining the family. Absent for a sibling group whose
+    /// parents are unknown (SPEC 1.0 §4.2.3), which is why it is optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub union: Option<Union>,
     /// Children of the union.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<FamilyChild>,

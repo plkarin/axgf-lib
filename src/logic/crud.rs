@@ -50,8 +50,9 @@ use uuid::Uuid;
 use crate::boundary::envelope::{Diagnostic, DiagnosticCode, Envelope, Severity};
 use crate::boundary::flat::FlatBundle;
 use crate::boundary::lifecycle::{
-    check_manifest_version, compute_stats, now_iso8601_utc, parse_flat, EMBEDDED_SCHEMA,
+    check_manifest_version, compute_stats, now_iso8601_utc, parse_flat, raise_manifest_version,
 };
+use crate::logic::profile;
 
 /// One of the eight AXGF entity kinds. String forms match the on-disk
 /// bundle directory names.
@@ -161,7 +162,12 @@ pub fn add_entity(flat_json: &str, kind: EntityKind, entity_json: &str) -> Envel
         obj.insert("type".into(), Value::String(kind.singular().into()));
     }
     if !obj.contains_key("axgf_version") {
-        obj.insert("axgf_version".into(), Value::String("1.0".into()));
+        // The oldest version the content fits in, not the newest this build
+        // knows: a person with no 1.1 attribute is a 1.0 person, and stamping
+        // it 1.1 would raise the whole bundle past every 1.0 reader for
+        // nothing (SPEC_1.1 §2.1).
+        let version = profile::required_version(kind, &Value::Object(obj.clone()));
+        obj.insert("axgf_version".into(), Value::String(version.into()));
     }
 
     let id = match obj.get("id").and_then(Value::as_str) {
@@ -181,9 +187,9 @@ pub fn add_entity(flat_json: &str, kind: EntityKind, entity_json: &str) -> Envel
             format!("{} already contains id {id}", kind.collection()),
         );
     }
-    let diags = validate_entity_in_isolation(kind, &entity, &id);
     map.insert(id.clone(), entity);
     refresh_manifest(&mut bundle);
+    let diags = validate_entity_in_isolation(&bundle, kind, &id);
 
     let data = serde_json::to_value(&bundle).unwrap_or(Value::Null);
     Envelope::ok_with(json!({"id": id, "bundle": data}), diags)
@@ -227,9 +233,9 @@ pub fn update_entity(flat_json: &str, kind: EntityKind, entity_json: &str) -> En
             format!("{} does not contain id {id}", kind.collection()),
         );
     }
-    let diags = validate_entity_in_isolation(kind, &entity, &id);
     map.insert(id.clone(), entity);
     refresh_manifest(&mut bundle);
+    let diags = validate_entity_in_isolation(&bundle, kind, &id);
 
     let data = serde_json::to_value(&bundle).unwrap_or(Value::Null);
     Envelope::ok_with(json!({"id": id, "bundle": data}), diags)
@@ -314,6 +320,7 @@ fn collection_mut(b: &mut FlatBundle, kind: EntityKind) -> &mut BTreeMap<String,
 }
 
 fn refresh_manifest(b: &mut FlatBundle) {
+    raise_manifest_version(b);
     let stats = compute_stats(b);
     let now = now_iso8601_utc();
     if let Value::Object(ref mut m) = b.manifest {
@@ -440,39 +447,46 @@ fn object_holds_ref(v: &Value, target: &str) -> bool {
     }
 }
 
-/// Validate `entity` against its schema-defs branch. Any failure
-/// surfaces as a non-blocking warning; the caller may still succeed.
-fn validate_entity_in_isolation(kind: EntityKind, entity: &Value, id: &str) -> Vec<Diagnostic> {
-    use jsonschema::JSONSchema;
-
-    let root: Value = match serde_json::from_str(EMBEDDED_SCHEMA) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
-    let defs = root.get("$defs").cloned().unwrap_or(Value::Null);
-    if defs.is_null() {
+/// Validate the entity just written, as it now sits in `bundle`: against
+/// the schema for the version the (already raised) manifest declares, and
+/// through the 1.1 profile checks. Every finding is a non-blocking warning;
+/// the write has already succeeded.
+fn validate_entity_in_isolation(
+    bundle: &FlatBundle,
+    kind: EntityKind,
+    id: &str,
+) -> Vec<Diagnostic> {
+    let Some(entity) = collection(bundle, kind).get(id) else {
         return Vec::new();
-    }
-    let wrapper = json!({
-        "$defs": defs,
-        "$ref": format!("#/$defs/{}", kind.singular()),
-    });
-    let compiled = match JSONSchema::compile(&wrapper) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
     };
-    let mut out = Vec::new();
-    if let Err(errors) = compiled.validate(entity) {
-        for e in errors {
-            out.push(Diagnostic {
-                code: DiagnosticCode::SchemaValidationFailed,
-                severity: Severity::Warning,
-                message: format!("{}: {e}", kind.singular()),
-                entity_ref: Some(format!("{}/{id}", kind.collection())),
-            });
-        }
-    }
+    let version = bundle
+        .manifest
+        .get("axgf")
+        .and_then(Value::as_str)
+        .unwrap_or("1.0");
+    let entity_ref = format!("{}/{id}", kind.collection());
+    let mut out = crate::logic::validate::schema_diagnostics(
+        version,
+        kind.singular(),
+        Some(kind),
+        entity,
+        Some(entity_ref),
+    );
+    profile::check_entity(kind, id, entity, Some(version), &mut out);
     out
+}
+
+fn collection(b: &FlatBundle, kind: EntityKind) -> &BTreeMap<String, Value> {
+    match kind {
+        EntityKind::Person => &b.persons,
+        EntityKind::Family => &b.families,
+        EntityKind::Event => &b.events,
+        EntityKind::Link => &b.links,
+        EntityKind::Occupation => &b.occupations,
+        EntityKind::Source => &b.sources,
+        EntityKind::Place => &b.places,
+        EntityKind::Document => &b.documents,
+    }
 }
 
 fn entity_collections(b: &FlatBundle) -> [(EntityKind, &'static str, &BTreeMap<String, Value>); 8] {

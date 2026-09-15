@@ -63,8 +63,8 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 use crate::boundary::envelope::{Diagnostic, DiagnosticCode, Envelope, Severity};
 use crate::boundary::flat::{ExternalPayload, FlatBundle};
 use crate::boundary::lifecycle::{
-    check_manifest_version, compute_stats, now_iso8601_utc, parse_flat, read_json,
-    split_entity_path, EMBEDDED_SCHEMA,
+    check_manifest_version, compute_stats, now_iso8601_utc, parse_flat, raise_manifest_version,
+    read_json, schema_entry, split_entity_path,
 };
 
 /// Size of the buffer used by [`Payload::copy_to`] and
@@ -441,6 +441,7 @@ where
         sources.insert(path.clone(), Source::Inline(b64.clone()));
     }
 
+    raise_manifest_version(&mut bundle);
     let fresh_stats = compute_stats(&bundle);
     let now = now_iso8601_utc();
     if let Value::Object(ref mut m) = bundle.manifest {
@@ -462,13 +463,9 @@ where
     if let Err(e) = write_json_entry(&mut zip, "manifest.json", &bundle.manifest, opts) {
         zip_err!(e);
     }
-    // The canonical schema, verbatim.
-    if let Err(e) = start_and_write(
-        &mut zip,
-        "schema/axgf-1.0.schema.json",
-        EMBEDDED_SCHEMA.as_bytes(),
-        opts,
-    ) {
+    // The canonical schema for the version the manifest declares, verbatim.
+    let (schema_path, schema_text) = schema_entry(&bundle.manifest);
+    if let Err(e) = start_and_write(&mut zip, schema_path, schema_text.as_bytes(), opts) {
         zip_err!(e);
     }
 

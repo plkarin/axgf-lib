@@ -94,6 +94,7 @@ an archive with the media missing. See
 - [Streaming payloads](#streaming-payloads) - `import_bundle_textual`, `import_bundle_streaming`, `export_bundle_streaming`
 - [Validation](#validation) - `validate`
 - [CRUD](#crud) - `add_entity`, `update_entity`, `delete_entity`
+- [The 1.1 person profile](#the-11-person-profile) - claims, versions, vocabularies, the registry
 - [Cleanup](#cleanup) - `deduplicate`
 - [Conversion](#conversion) - `convert_gedcom`
 - [Worked scenarios](#worked-scenarios) - multi-call recipes
@@ -105,7 +106,9 @@ an archive with the media missing. See
 
 ### `create_bundle(family_name: Option<&str>) -> Envelope`
 
-Return a fresh empty bundle whose manifest declares `axgf: "1.0"`. If
+Return a fresh empty bundle whose manifest declares `axgf: "1.0"` — the
+oldest version an empty bundle fits. The first AXGF 1.1 attribute written to
+it raises that; see [The 1.1 person profile](#the-11-person-profile). If
 `family_name` is provided, populates `manifest.family.name`.
 
 **data**: the flat bundle JSON.
@@ -230,8 +233,7 @@ assert!(env.data.is_null());
   "data": null,
   "diagnostics": [
     { "code": "UNSUPPORTED_SPEC_VERSION", "severity": "error",
-      "message": "bundle declares axgf 2.0; this build supports 1.0",
-      "entity_ref": "manifest" }
+      "message": "unsupported AXGF spec version \"2.0\"; this build supports [\"1.0\", \"1.1\"]" }
   ]
 }
 ```
@@ -249,10 +251,11 @@ let env = import_bundle(b"not a zip at all");
 
 ### `export_bundle(flat_json: &str) -> Envelope`
 
-Rebuild a `.axgf` ZIP archive from a flat bundle. Stats are recomputed and
-`updated_at` is refreshed. The canonical schema is embedded at
-`schema/axgf-1.0.schema.json`. Attachments are written back at their original
-paths.
+Rebuild a `.axgf` ZIP archive from a flat bundle. Stats are recomputed,
+`updated_at` is refreshed, and `manifest.axgf` is raised if the content needs
+a newer version than it declares. The schema of the declared version is
+embedded at `schema/axgf-1.0.schema.json` or `schema/axgf-1.1.schema.json`.
+Attachments are written back at their original paths.
 
 **data on success**: `{ "zip_base64": "...", "size_bytes": u }`.
 
@@ -645,6 +648,14 @@ Semantic layers:
 | `CYCLE_DETECTED` | Error | A parent/child cycle exists in the derived DAG. |
 | `CHRONOLOGY_CONFLICT` | Warning | Child's birth year precedes parent's. |
 | `DUPLICATE_UNIQUE_REF` | Warning | Two families share the same `union.persons` set. |
+| `OUT_OF_VOCABULARY` | Warning | An AXGF 1.1 value is not a term of its closed vocabulary. |
+| `CLAIM_INCONSISTENT` | Warning | AXGF 1.1 values contradict each other (SPEC_1.1 §7.3). |
+| `SPEC_VERSION_MISMATCH` | Warning | A declared version contradicts the content or the manifest. |
+| `UNKNOWN_ATTRIBUTE` | Info | A key in an AXGF 1.1 block that 1.1 does not define. |
+
+Structural checks use the schema of the version the manifest declares. The
+1.1 checks run on content whatever the manifest says; see
+[The 1.1 person profile](#the-11-person-profile).
 
 **data on success**: `{ "errors": u, "warnings": u, "infos": u, "total": u }`.
 
@@ -726,9 +737,14 @@ let zip = export_bundle(&flat_json).data;
 ### `add_entity(flat, kind, entity_json) -> Envelope`
 
 - Generates a UUID v4 when the caller omits `id`.
-- Fills in `type` and `axgf_version` if missing.
-- Structurally validates the entity - schema failures surface as warnings but
-  the add still succeeds.
+- Fills in `type` if missing, and a missing `axgf_version` with the oldest
+  version the entity's content fits: `"1.1"` when it carries an AXGF 1.1
+  attribute, `"1.0"` otherwise.
+- Raises `manifest.axgf` when the bundle now holds content its declared
+  version cannot. `update_entity` does the same.
+- Structurally validates the entity against the schema the manifest declares,
+  and checks its 1.1 vocabularies and claims - findings surface as warnings
+  but the add still succeeds.
 - Refuses duplicates with `ENTITY_ALREADY_EXISTS`.
 
 `kind` is [`EntityKind`](../src/logic/crud.rs): one of `Person`, `Family`,
@@ -1198,6 +1214,263 @@ let flat = delete_entity(&flat, EntityKind::Place, dup_place_id, DeletePolicy::C
 
 ---
 
+## The 1.1 person profile
+
+AXGF 1.1 adds fourteen groups of person attributes — morphology, health,
+genomics, military service, personality and the rest (SPEC_1.1 §5). No
+function is new and none changes shape. A 1.1 attribute is data inside a
+Person, a Family child, a Link or an Occupation, and it passes through
+`add_entity`, `update_entity`, `validate` and the exports like any other
+field. What the library adds is knowing what those fields may hold.
+
+Every attribute is a *claim* — a value carrying the provenance a 1.0 date
+already carries — or a *series* of claims when it can change in a lifetime:
+
+```json
+"health":     { "blood_group": { "value": "A", "source_id": "5b1e...", "confidence": 0.95 } },
+"morphology": { "height": [
+  { "value": 158, "date": { "value": "1931", "precision": "year" }, "confidence": 0.9 },
+  { "value": 155, "date": { "value": "1968", "precision": "year" }, "confidence": 0.7 }
+]}
+```
+
+**Versions.** A bundle is 1.1 when it holds 1.1 content, and not before.
+
+- `create_bundle` stamps `"1.0"`. A bundle that never gets a 1.1 attribute
+  stays readable by every 1.0 reader.
+- `add_entity` fills a missing `axgf_version` with the oldest version the
+  entity's content fits. A declaration the caller sent is kept as sent.
+- Every CRUD write, and both exports, raise `manifest.axgf` to the newest
+  version the bundle's content needs or its entities declare. It is never
+  lowered.
+- The exports write the schema the manifest declares:
+  `schema/axgf-1.0.schema.json` or `schema/axgf-1.1.schema.json`.
+
+**Findings.** Four codes, all non-blocking: the write lands, and the finding
+travels with it.
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `OUT_OF_VOCABULARY` | Warning | A value that is not a term of its closed vocabulary. |
+| `CLAIM_INCONSISTENT` | Warning | Values that contradict each other in a way no schema can see (SPEC_1.1 §7.3). |
+| `SPEC_VERSION_MISMATCH` | Warning | A declared version that the content, or the bundle around it, contradicts. |
+| `UNKNOWN_ATTRIBUTE` | Info | A key inside a 1.1 block that 1.1 does not define. Kept. |
+
+The checks run on content, not on the declared version: a bundle that forgot
+to say 1.1 is still checked, and the forgetting is reported.
+
+**The registry.** [`model::profile`](../src/model/profile/mod.rs) is the
+specification's tables as Rust constants. `registry` holds all 132
+attributes, each with its group, path, cardinality, value shape and sensitive
+class; `vocab` holds the 102 closed vocabularies. Clients build forms and
+filters from it, so the lists are never written out a second time. Like the
+rest of `model` it never crosses the boundary: a caller in another language
+reads the same facts from the schema's `vocab_*` definitions and
+`x-axgf-class` annotations.
+
+#### Demo A - record a blood group and a height that changed
+
+*Reproduces: a researcher entering what a wartime identity card and a 1968
+medical record say. The first 1.1 attribute makes the bundle a 1.1 bundle in
+the same call; a bundle that only ever gets 1.0 data stays 1.0.*
+
+```rust
+use axgf_rs::{add_entity, create_bundle, EntityKind};
+use serde_json::json;
+
+let flat = create_bundle(Some("Karin")).data.to_string();
+let person = json!({
+  "identity": { "name": { "display": "Zofia Karin", "components": [] },
+                "gender": { "value": "F" }, "is_living": false },
+  "health":     { "blood_group": { "value": "A", "confidence": 0.95 } },
+  "morphology": { "height": [
+    { "value": 158, "date": { "value": "1931", "precision": "year" }, "confidence": 0.9 },
+    { "value": 155, "date": { "value": "1968", "precision": "year" }, "confidence": 0.7 }
+  ]}
+});
+let env = add_entity(&flat, EntityKind::Person, &person.to_string());
+let id  = env.data["id"].as_str().unwrap();
+
+assert_eq!(env.data["bundle"]["manifest"]["axgf"], "1.1");
+assert_eq!(env.data["bundle"]["persons"][id]["axgf_version"], "1.1");
+```
+
+The same call with only the `identity` block leaves both at `"1.0"`. Both
+heights are kept, each with its own date and confidence: a series records
+what each source said, and choosing between them is the reader's business.
+
+#### Demo B - a value that is not in its vocabulary
+
+*Reproduces: an import from a tool with its own colour names. The value is
+saved — refusing it would lose what the source said — and the finding names
+the attribute, the value and the vocabulary, so a client can offer that
+vocabulary's terms as the correction.*
+
+```rust
+use axgf_rs::{update_entity, EntityKind};
+
+let mut p = bundle["persons"][id].clone();
+p["morphology"]["eye_colour"] = json!([{ "value": "turquoise" }]);
+let env = update_entity(&flat, EntityKind::Person, &p.to_string());
+```
+
+```json
+{
+  "status": "ok",
+  "data": { "id": "c32e...", "bundle": { "...": "..." } },
+  "diagnostics": [
+    { "code": "OUT_OF_VOCABULARY", "severity": "warning",
+      "message": "persons/c32e...: morphology.eye_colour[0].value \"turquoise\" is not a term of vocabulary eye_colour",
+      "entity_ref": "persons/c32e..." }
+  ]
+}
+```
+
+The schema's own enumeration failure for the same value is not reported a
+second time. A 1.0 enumeration — a gender, a union type — keeps its
+`SCHEMA_VALIDATION_FAILED`, exactly as before.
+
+#### Demo C - claims that cannot both be true
+
+*Reproduces: a DNA result pasted into the wrong line, and a rank category
+picked by hand. Every value is a term of its vocabulary; together they
+contradict each other, which is what a schema cannot see.*
+
+```rust
+p["genomics"] = json!({ "y_haplogroup": { "value": { "major": "R", "subclade": "I-M253" } } });
+p["military"] = json!({ "ranks": [
+  { "value": { "country": "PL", "rank": "kapral", "category": "junior_officer" } }
+]});
+let env = update_entity(&flat, EntityKind::Person, &p.to_string());
+```
+
+```json
+"diagnostics": [
+  { "code": "CLAIM_INCONSISTENT", "severity": "warning",
+    "message": "persons/c32e...: genomics.y_haplogroup.value.subclade \"I-M253\" does not belong to major haplogroup \"R\"",
+    "entity_ref": "persons/c32e..." },
+  { "code": "CLAIM_INCONSISTENT", "severity": "warning",
+    "message": "persons/c32e...: military.ranks[0].value.category \"junior_officer\" disagrees with rank \"kapral\", which is \"non_commissioned\"",
+    "entity_ref": "persons/c32e..." }
+]
+```
+
+The other rules: an epigenetic clock given the other kind of result (an
+age for DunedinPACE, a pace for the rest), a claim whose `valid_until`
+precedes its `valid_from`, and two causes of death with the same `sequence`.
+A rank for a country 1.1 registers no rank list for, or one outside the list
+its country selects, is `OUT_OF_VOCABULARY`; so is an analyte outside its
+laboratory panel.
+
+#### Demo D - an entity that says it is older than it is
+
+*Reproduces: a client whose entity template hard-codes
+`"axgf_version": "1.0"`, used for a person with a blood group. A 1.0 reader
+trusting that declaration would skip content it cannot read without knowing
+it had skipped anything.*
+
+```json
+{
+  "status": "ok",
+  "data": { "id": "c32e...", "bundle": { "manifest": { "axgf": "1.1", "...": "..." }, "...": "..." } },
+  "diagnostics": [
+    { "code": "SPEC_VERSION_MISMATCH", "severity": "warning",
+      "message": "persons/c32e...: carries AXGF 1.1 attributes but declares axgf_version 1.0",
+      "entity_ref": "persons/c32e..." }
+  ]
+}
+```
+
+The manifest is raised regardless, because it describes the whole bundle;
+the entity's own declaration is the caller's, and is reported rather than
+rewritten. The same code reports an entity declaring 1.1 in a bundle whose
+manifest says 1.0 — once, not again as the 1.0 schema's refusal of `"1.1"` —
+and a 1.0 manifest carrying `privacy.withheld_classes`.
+
+#### Demo E - a misspelt attribute
+
+*Reproduces: `blod_group`. Every AXGF version requires an unknown key to be
+preserved, and the schema permits it, so without this finding the typo would
+be invisible: the value is kept, and no reader ever looks for it.*
+
+```json
+{ "code": "UNKNOWN_ATTRIBUTE", "severity": "info",
+  "message": "persons/c32e...: health.blod_group is not an AXGF 1.1 attribute; it is preserved",
+  "entity_ref": "persons/c32e..." }
+```
+
+#### Demo F - a form built from the registry
+
+*Reproduces: an editor with a tab per group, a select for every closed
+vocabulary and an "add another" row for every series — without a hand-kept
+list of 132 attributes waiting to fall behind the specification.*
+
+```rust
+use axgf_rs::model::profile::registry::{self, Cardinality, Shape};
+
+let group = registry::group("morphology").unwrap();
+for a in group.attributes {
+    let repeats = a.cardinality == Cardinality::Series;     // "add another entry"
+    match a.shape {
+        Shape::Vocab(v)              => select(a.path, v.terms, repeats),
+        Shape::Number { unit, .. }   => number(a.path, unit, repeats),
+        Shape::Text                  => textarea(a.path, repeats),
+        Shape::Object { fields, .. } => fieldset(a.path, fields, repeats),
+        _                            => other(a),
+    }
+}
+```
+
+```text
+morphology.height             Series  number (cm)
+morphology.weight             Series  number (kg)
+morphology.bmi                Series  number (kg/m²)
+morphology.body_composition   Series  object of 3 fields
+morphology.build              Series  select build: slight, slim, average, …
+morphology.eye_colour         Series  select eye_colour: light_blue, blue, dark_blue, …
+```
+
+Terms are stable identifiers, not labels. A client translates them; the
+bundle never holds a translation.
+
+#### Demo G - an export without the health and genomic record
+
+*Reproduces: sending the tree to a cousin. Every attribute is marked with
+its sensitive class — health, biometrics, genomics or legal — so leaving a
+class out is a filter over the registry, and `withheld_classes` tells whoever
+opens the file that the gap is deliberate rather than missing data.*
+
+```rust
+use axgf_rs::export_bundle;
+use axgf_rs::model::profile::registry::{self, SensitiveClass};
+
+let withheld = [SensitiveClass::Health, SensitiveClass::Genomics];
+let mut copy: serde_json::Value = serde_json::from_str(&flat)?;
+for person in copy["persons"].as_object_mut().unwrap().values_mut() {
+    for a in withheld.iter().flat_map(|c| registry::attributes_of_class(*c)) {
+        if let Some(block) = person.get_mut(a.block).and_then(|b| b.as_object_mut()) {
+            block.remove(a.key);
+        }
+    }
+    // An empty "genomics": {} would still say there had been something.
+    person.as_object_mut().unwrap().retain(|k, v| {
+        !(registry::PROFILE_BLOCKS.contains(&k.as_str())
+            && v.as_object().is_some_and(|o| o.is_empty()))
+    });
+}
+copy["manifest"]["privacy"]["withheld_classes"] =
+    json!(withheld.iter().map(|c| c.as_str()).collect::<Vec<_>>());
+let zip = export_bundle(&copy.to_string());
+```
+
+The archive holds a manifest saying `"withheld_classes": ["health",
+"genomics"]`, `schema/axgf-1.1.schema.json`, and each person without either
+class. The library does not decide what to withhold. Which classes leave,
+and for whom, is the caller's policy (SPEC_1.1 §4); the library's part is
+knowing which attributes belong to which class.
+
+---
+
 ## Cleanup
 
 ### `deduplicate(flat) -> Envelope`
@@ -1613,6 +1886,10 @@ diagnostics, so no error-mapping layer is needed.
 | `DUPLICATE_UNIQUE_REF` | Validate |
 | `CYCLE_DETECTED` | Validate |
 | `CHRONOLOGY_CONFLICT` | Validate |
+| `OUT_OF_VOCABULARY` | Validate, CRUD (add/update) |
+| `CLAIM_INCONSISTENT` | Validate, CRUD (add/update) |
+| `SPEC_VERSION_MISMATCH` | Validate, CRUD (add/update) |
+| `UNKNOWN_ATTRIBUTE` | Validate, CRUD (add/update) |
 | `ENTITY_NOT_FOUND` | CRUD (update/delete) |
 | `ENTITY_ALREADY_EXISTS` | CRUD (add) |
 | `UNKNOWN_ENTITY_KIND` | Adapters |

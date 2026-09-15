@@ -7,7 +7,7 @@
 [![Crates.io](https://img.shields.io/crates/v/axgf-rs.svg?style=flat-square)](https://crates.io/crates/axgf-rs)
 [![Docs.rs](https://img.shields.io/docsrs/axgf-rs?style=flat-square)](https://docs.rs/axgf-rs)
 [![License](https://img.shields.io/badge/license-Apache--2.0-43d9a2?style=flat-square)](./LICENSE)
-[![Spec](https://img.shields.io/badge/spec-AXGF_1.0-764ba2?style=flat-square)](https://github.com/plkarin/axgf-spec)
+[![Spec](https://img.shields.io/badge/spec-AXGF_1.0_%C2%B7_1.1-764ba2?style=flat-square)](https://github.com/plkarin/axgf-spec)
 [![Status](https://img.shields.io/badge/status-published_%C2%B7_pre--1.0-43d9a2?style=flat-square)](https://github.com/plkarin/axgf-lib/issues)
 
 *One core. Every platform. The single point of contact for reading, writing, validating, and converting AXGF bundles — so no application ever re-implements the format.*
@@ -53,17 +53,17 @@ Or add it manually to `Cargo.toml`:
 
 ```toml
 [dependencies]
-axgf-rs = "0.3"
+axgf-rs = "0.4"
 ```
 
 Optional adapters are gated behind Cargo features (see the [Platform bindings](#platform-bindings) section for the full table):
 
 ```toml
 [dependencies]
-axgf-rs = { version = "0.3", features = ["wasm"] }
+axgf-rs = { version = "0.4", features = ["wasm"] }
 ```
 
-The pre-1.0 version signals that the public API may still change. The AXGF **format** version and the crate **version** are independent — this crate targets AXGF 1.0.
+The pre-1.0 version signals that the public API may still change. The AXGF **format** version and the crate **version** are independent — this crate reads and writes AXGF 1.0 and 1.1.
 
 ### Command-line binary
 
@@ -148,7 +148,7 @@ The library's behavior is fixed by five rules. They exist so that a single core 
 
 **No disk, no graph traversal, no rendering.** The library produces and validates correct bundles. Reading rich views, walking the family graph, persisting to a database, and rendering to HTML are the client's responsibility, not the library's.
 
-**Explicit spec-version gating.** Every operation checks the bundle's declared AXGF version and refuses unknown versions with a stable diagnostic rather than misbehaving. A library built for AXGF 1.0 will never silently corrupt a 2.0 bundle.
+**Explicit spec-version gating.** Every operation checks the bundle's declared AXGF version and refuses unknown versions with a stable diagnostic rather than misbehaving. A library built for AXGF 1.0 and 1.1 will never silently corrupt a 2.0 bundle.
 
 ---
 
@@ -198,6 +198,18 @@ They exist because peak memory is then bounded by the largest single payload —
 
 Streaming is never the default: `import_bundle` and `export_bundle` are unchanged, and a caller who wants the whole bundle as one JSON value still gets exactly that. A streamed import marks the bundle's `external_payloads`, and `export_bundle` refuses such a bundle with `PAYLOADS_EXTERNAL` rather than writing an archive with the media silently missing.
 
+### The AXGF 1.1 person profile (0.4.0)
+
+[AXGF 1.1](https://github.com/plkarin/axgf-spec/blob/main/SPEC_1.1.md) lets a person carry a complete profile — civil status, morphology, biometrics, health, genomics, death, residence, education and work, service, legal record, belief, personality, digital legacy — as dated, sourced claims. Nothing about the functions changes; what changes is what they understand:
+
+| | |
+|---|---|
+| **Both versions** | `SUPPORTED_SPEC_VERSIONS` is `["1.0", "1.1"]`. Each bundle is validated against, and exported with, the schema its manifest declares. |
+| **Vocabularies** | A value outside one of 1.1's 102 closed vocabularies is reported as `OUT_OF_VOCABULARY`, naming the attribute, the value and the vocabulary — never accepted silently, never a generic schema failure. |
+| **Semantic rules** | `CLAIM_INCONSISTENT` for what a schema cannot say: a subclade outside its haplogroup, a rank whose category is not its own, a period that ends before it starts. |
+| **Versions** | A write that gives a 1.0 bundle 1.1 content raises its manifest to 1.1 in the same step that refreshes its stats; `SPEC_VERSION_MISMATCH` reports an entity that undersells or oversells itself. |
+| **Data** | `model::profile` holds the vocabularies and a registry of all 132 attributes — path, single or series, value shape, sensitive class — for an application to build forms and withhold classes from, without a second list. |
+
 Deliberately **not** in V1: graph traversal, a query engine, sessions, disk access, and rendering. Those belong to the client, or to a later version. Disk access stays out under streaming too — the library never opens a path; the caller supplies the reader and the writer it already owns, and the library only reads and writes through them.
 
 ---
@@ -205,7 +217,7 @@ Deliberately **not** in V1: graph traversal, a query engine, sessions, disk acce
 ## Quick start
 
 Create a bundle, add a person, validate it, write the archive, read it back.
-Compiled and run against `axgf-rs` 0.3.0 exactly as printed:
+Compiled and run against `axgf-rs` 0.4.0 exactly as printed:
 
 ```rust
 use std::io::Cursor;
@@ -287,16 +299,16 @@ The same core is exposed to every target through thin, logic-free adapters, sele
 
 ```toml
 [dependencies]
-axgf-rs = { version = "0.3", features = ["wasm"] }
+axgf-rs = { version = "0.4", features = ["wasm"] }
 ```
 
 ---
 
 ## Status
 
-**Pre-1.0, in production.** The V1 surface described above is complete and published on crates.io as `axgf-rs` 0.3.0, and [axgf-cms](https://github.com/plkarin/axgf-cms) runs on it: every bundle it serves is created, validated, imported and exported through this library. The API and the design contract are settled, and the diagnostic codes are a stable contract.
+**Pre-1.0, in production.** The V1 surface described above is complete and published on crates.io as `axgf-rs`, and [axgf-cms](https://github.com/plkarin/axgf-cms) runs on it: every bundle it serves is created, validated, imported and exported through this library. The API and the design contract are settled, and the diagnostic codes are a stable contract.
 
-The version stays below `1.0.0` because the Rust signatures may still change — 0.3.0 added functions without breaking any, but a future minor release may break one. Pin a minor version if that matters to you. The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
+The version stays below `1.0.0` because the Rust signatures may still change — 0.4.0 made `Family::union` optional to match the specification, the one change in it that can break a caller. Pin a minor version if that matters to you. The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and the 1.1 draft. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
 
 ---
 

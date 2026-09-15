@@ -111,6 +111,11 @@ pub struct Privacy {
     /// Exporter's GDPR-compliance assertion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gdpr_compliant: Option<bool>,
+    /// 1.1: the sensitive classes left out of this bundle when it was
+    /// written (SPEC_1.1 §4.5), terms of
+    /// [`super::profile::vocab::SENSITIVE_CLASS`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub withheld_classes: Vec<String>,
     /// Forward-compatible extras.
     #[serde(flatten)]
     pub extra: Extra,
@@ -137,7 +142,7 @@ pub struct License {
 /// `#/$defs/manifest` and SPEC §3.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
-    /// AXGF spec version (`"1.0"` for this library).
+    /// AXGF spec version: `"1.0"` or `"1.1"`.
     pub axgf: String,
     /// Bundle creation timestamp (ISO 8601).
     pub created_at: String,

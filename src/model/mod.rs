@@ -14,7 +14,9 @@
 //! (or an equivalent) to preserve unknown fields untouched across a
 //! round-trip, per AXGF principle **P9** (extensible without breaking).
 //!
-//! Filled in during Phase 2.
+//! [`profile`] holds what AXGF 1.1 adds to a Person — its claim shape, its
+//! closed vocabularies, its attribute registry and typed blocks — kept
+//! apart so that the eight 1.0 modules still read as the 1.0 model.
 
 pub mod common;
 pub mod document;
@@ -25,4 +27,5 @@ pub mod manifest;
 pub mod occupation;
 pub mod person;
 pub mod place;
+pub mod profile;
 pub mod source;

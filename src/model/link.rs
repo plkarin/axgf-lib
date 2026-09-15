@@ -52,6 +52,10 @@ pub struct Link {
     /// Optional category (`spiritual`, `professional`, …).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    /// 1.1: what the relationship is, from the `from` side, a term of
+    /// [`super::profile::vocab::LINK_RELATION`] (SPEC_1.1 §5.13).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relation: Option<String>,
     /// `true` if the relationship holds in both directions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bidirectional: Option<bool>,

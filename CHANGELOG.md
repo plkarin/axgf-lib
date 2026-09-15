@@ -5,6 +5,104 @@ All notable changes to `axgf-rs` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-09-15
+
+AXGF 1.1: the extended person profile. The library reads, validates, writes
+and exports 1.1 bundles as it does 1.0 ones, and says in its own terms what is
+wrong with the new data. The boundary is unchanged — every function takes and
+returns what it did — and a bundle with no 1.1 content behaves exactly as it
+did in 0.3.0, down to the schema file in its archive. MSRV unchanged at
+**1.88.0**.
+
+### Added
+
+- **Both spec versions.** `SUPPORTED_SPEC_VERSIONS` is `["1.0", "1.1"]`, and
+  `LATEST_SPEC_VERSION` is `"1.1"`. The 1.1 schema is vendored beside the 1.0
+  one (`schema/axgf-1.1.schema.json`, `EMBEDDED_SCHEMA_1_1`), and
+  `boundary::lifecycle::schema_for` returns the schema and archive path for a
+  version. `validate`, `add_entity` and `update_entity` check against the
+  schema the manifest declares; `export_bundle` and `export_bundle_streaming`
+  write that schema into the archive.
+- **A bundle becomes 1.1 when it gets 1.1 content.** Every CRUD write and both
+  exports raise `manifest.axgf` to cover what the bundle holds — the newest
+  version any entity declares or any entity's content needs — in the same step
+  that refreshes `stats`. It is never lowered. `create_bundle` still stamps
+  `"1.0"` (`CURRENT_SPEC_VERSION`): a bundle with nothing 1.1 in it is a 1.0
+  bundle, and stamping it 1.1 would make every 1.0 reader refuse a file it
+  could read. `add_entity` fills a missing `axgf_version` with the oldest
+  version the entity's content fits, for the same reason.
+- **`model::profile`** — the 1.1 addition as data, not behaviour:
+  - `claim::Claim<T>`, with `ClaimBound` and `Coordinates` aliased to the 1.0
+    shapes they are (`LinkValidity`, `place::Coordinates`) and `ArtefactRef`
+    for Document references;
+  - `vocab` — all 102 closed vocabularies as `Vocabulary` constants, the
+    analytes each laboratory panel may contain, and the six national rank
+    vocabularies with each rank's own title and category;
+  - `registry` — all 132 attributes in their fourteen groups: path, single or
+    series, value `Shape`, and `SensitiveClass`, with lookups by path, group
+    and class;
+  - `types` — typed structs for the twelve new Person blocks. Numbers are
+    `serde_json::Number`, so `158` round-trips as `158`.
+- **1.1 fields on the 1.0 model**: `Identity::{titles, sex_at_birth,
+  gender_identity, class_visibility}`, the new `Vital` attributes (time,
+  coordinates, and on death causes, contributing factors, autopsy,
+  disposition, grave), the twelve blocks on `Person`, `FamilyChild::lineage`,
+  `Link::relation`, `Occupation::position` and
+  `Privacy::withheld_classes`.
+- **Four diagnostic codes**, all non-blocking:
+  - `OUT_OF_VOCABULARY` (warning) — a value that is not a term of its
+    vocabulary, naming the attribute path, the value and the vocabulary. Also
+    a rank outside the list its country selects, a rank for a country 1.1
+    registers no list for, an analyte outside its panel, an artefact type its
+    attribute does not allow. The schema's own enumeration failure for the
+    same value is not reported a second time.
+  - `CLAIM_INCONSISTENT` (warning) — SPEC_1.1 §7.3's rules a schema cannot
+    express: a haplogroup subclade outside its major clade, a rank whose
+    category is not its own, an epigenetic clock with the wrong kind of
+    result, a period that ends before it starts, two causes of death with one
+    sequence number.
+  - `SPEC_VERSION_MISMATCH` (warning) — an entity with 1.1 attributes that
+    declares 1.0, one newer than its manifest, or a 1.0 manifest carrying
+    `withheld_classes`.
+  - `UNKNOWN_ATTRIBUTE` (info) — a key inside a 1.1 block that 1.1 does not
+    define. Preserved, as 1.0 P9 requires; reported, because a misspelt
+    attribute is otherwise invisible.
+
+  The 1.1 checks run on content rather than on the declared version, so a
+  bundle that forgot to say 1.1 is still checked and the forgetting is
+  reported.
+
+### Changed
+
+- **`Family::union` is `Option<Union>`.** The specification made a union
+  optional for a sibling group whose parents are unknown (1.0 §4.2.3) in
+  0.2.0; the typed model still required one and refused the shape. The only
+  change in this release that can break a caller, and only one that reads
+  `Family` through the typed model.
+- **Compiled schemas are cached per process.** `add_entity` and
+  `update_entity` compiled the whole schema on every call, which with 1.1's
+  vocabularies cost more than the write. The embedded schemas are constants,
+  so compiling one is a pure function and is done once per version and kind.
+- `scripts/sync-schema.sh` and `.github/workflows/schema-drift.yml` sync and
+  compare both schema files.
+
+### Tests
+
+63 new: `tests/profile_registry.rs` holds the registry against the embedded
+schema in both directions — attributes, cardinalities, classes, every term of
+every vocabulary, artefact restrictions, the rank rules;
+`tests/profile_roundtrip.rs` round-trips every group through the typed model,
+with every attribute and field filled from the registry, plus the
+specification's worked example and a bundle through ZIP and back;
+`tests/profile_validation.rs` puts a term and a non-term into every
+vocabulary slot of every group — the non-term must draw exactly one
+`OUT_OF_VOCABULARY` naming its vocabulary — and covers the semantic rules and
+the version rules. Mutation-checked: silencing the vocabulary check fails 16
+of them, and letting the schema's enumeration failure through as well fails
+15.
+
+[0.4.0]: https://github.com/plkarin/axgf-lib/releases/tag/v0.4.0
+
 ## [0.3.0] — 2026-08-17
 
 Streaming payload access, for bundles whose media does not fit in memory.

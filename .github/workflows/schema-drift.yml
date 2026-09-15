@@ -24,11 +24,13 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Fetch upstream schema
+      - name: Fetch upstream schemas
         run: |
-          curl --fail --silent --show-error --location \
-            --output /tmp/upstream.schema.json \
-            https://raw.githubusercontent.com/plkarin/axgf-spec/main/schema/axgf-1.0.schema.json
+          for v in 1.0 1.1; do
+            curl --fail --silent --show-error --location \
+              --output /tmp/upstream-$v.schema.json \
+              https://raw.githubusercontent.com/plkarin/axgf-spec/main/schema/axgf-$v.schema.json
+          done
 
       - name: Compare canonical forms
         run: |
@@ -40,16 +42,21 @@ jobs:
                       json.dumps(json.load(f), sort_keys=True,
                                  separators=(",", ":")).encode()
                   ).hexdigest()
-          vendored = canon("schema/axgf-1.0.schema.json")
-          upstream = canon("/tmp/upstream.schema.json")
-          print(f"vendored canonical sha256: {vendored}")
-          print(f"upstream canonical sha256: {upstream}")
-          if vendored != upstream:
+          drifted = False
+          for v in ("1.0", "1.1"):
+              vendored = canon(f"schema/axgf-{v}.schema.json")
+              upstream = canon(f"/tmp/upstream-{v}.schema.json")
+              print(f"{v} vendored canonical sha256: {vendored}")
+              print(f"{v} upstream canonical sha256: {upstream}")
+              if vendored != upstream:
+                  drifted = True
+                  print(f"ERROR: vendored {v} schema has drifted from axgf-spec main.")
+          if drifted:
               print()
-              print("ERROR: vendored schema has drifted from axgf-spec main.")
               print("Run scripts/sync-schema.sh, review the diff, and update")
-              print("library code if the spec changed in a way that affects it.")
+              print("library code if the spec changed in a way that affects it —")
+              print("for 1.1, tests/profile_registry.rs will say where.")
               print("Do not merge until this check is green.")
               sys.exit(1)
-          print("OK: vendored schema matches upstream (canonical comparison).")
+          print("OK: both vendored schemas match upstream (canonical comparison).")
           PY

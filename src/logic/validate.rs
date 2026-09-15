@@ -11,12 +11,21 @@
 //! ## Layers
 //!
 //! **Structural (JSON Schema).** Every entity in the bundle — plus the
-//! manifest — is validated against the embedded AXGF 1.0 JSON Schema
-//! (`schema/axgf-1.0.schema.json`). Failures surface as
+//! manifest — is validated against the embedded schema for the version the
+//! manifest declares: `schema/axgf-1.0.schema.json` or, for a 1.1 bundle,
+//! `schema/axgf-1.1.schema.json`. Failures surface as
 //! `SCHEMA_VALIDATION_FAILED` warnings (severity `Warning`). The spec
 //! says (§12.1) "conformant parsers SHOULD validate entities against
 //! this schema" — SHOULD, not MUST, so a structurally-questionable
-//! bundle is reported but not blocking.
+//! bundle is reported but not blocking. An enumeration failure inside 1.1
+//! content is reported once, by the profile checks below, as
+//! `OUT_OF_VOCABULARY` rather than twice.
+//!
+//! **AXGF 1.1.** `OUT_OF_VOCABULARY`, `CLAIM_INCONSISTENT`,
+//! `SPEC_VERSION_MISMATCH` (warnings) and `UNKNOWN_ATTRIBUTE` (info): see
+//! `logic/profile.rs`. They run on content, not on the declared version, so a
+//! 1.1 attribute in a bundle that forgot to say 1.1 is still checked — and
+//! the forgetting is reported.
 //!
 //! **Semantic.**
 //!
@@ -44,14 +53,18 @@
 //! The `data` payload has the shape:
 //! `{"errors": u, "warnings": u, "infos": u, "total": u}`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::OnceLock;
 
+use jsonschema::error::ValidationErrorKind;
 use jsonschema::JSONSchema;
 use serde_json::{json, Value};
 
 use crate::boundary::envelope::{Diagnostic, DiagnosticCode, Envelope, Severity};
 use crate::boundary::flat::FlatBundle;
-use crate::boundary::lifecycle::{check_manifest_version, parse_flat, EMBEDDED_SCHEMA};
+use crate::boundary::lifecycle::{check_manifest_version, parse_flat, schema_for};
+use crate::logic::crud::EntityKind;
+use crate::logic::profile;
 
 /// See [`crate::validate`].
 pub fn validate(flat_json: &str) -> Envelope {
@@ -64,12 +77,24 @@ pub fn validate(flat_json: &str) -> Envelope {
     }
 
     let mut diags: Vec<Diagnostic> = Vec::new();
-
-    let root: Value = serde_json::from_str(EMBEDDED_SCHEMA).unwrap_or(Value::Null);
-    let defs = root.get("$defs").cloned().unwrap_or(Value::Null);
+    let version = bundle
+        .manifest
+        .get("axgf")
+        .and_then(Value::as_str)
+        .unwrap_or("1.0")
+        .to_string();
 
     // Structural: manifest + every entity.
-    structural(&bundle, &defs, &mut diags);
+    structural(&bundle, &version, &mut diags);
+
+    // AXGF 1.1: vocabularies, the semantic rules of SPEC_1.1 §7.3, and the
+    // versions entities declare.
+    profile::check_manifest(&bundle.manifest, &mut diags);
+    for (kind, _, map) in typed_collections(&bundle) {
+        for (id, value) in map {
+            profile::check_entity(kind, id, value, Some(&version), &mut diags);
+        }
+    }
 
     // Semantic passes.
     let all_ids = collect_all_ids(&bundle);
@@ -94,52 +119,112 @@ pub fn validate(flat_json: &str) -> Envelope {
 // Structural
 // -------------------------------------------------------------------------
 
-/// Compile a schema that pins the given entity kind, resolving all
-/// internal `$ref`s against the full `$defs` block. Returns `None` if
-/// compilation fails (the embedded schema being malformed would be a
-/// build-time bug), in which case structural checks for that kind are
-/// silently skipped rather than propagating an internal error.
-fn compile_for_kind(kind: &str, defs: &Value) -> Option<JSONSchema> {
-    if defs.is_null() {
-        return None;
-    }
-    let wrapper = json!({
-        "$defs": defs.clone(),
-        "$ref":  format!("#/$defs/{kind}"),
-    });
-    JSONSchema::compile(&wrapper).ok()
-}
-
-fn structural(b: &FlatBundle, defs: &Value, out: &mut Vec<Diagnostic>) {
-    // Manifest — special: no entity id, no collection ref.
-    if let Some(sch) = compile_for_kind("manifest", defs) {
-        if let Err(errors) = sch.validate(&b.manifest) {
-            for e in errors {
-                out.push(Diagnostic {
-                    code: DiagnosticCode::SchemaValidationFailed,
-                    severity: Severity::Warning,
-                    message: format!("manifest: {e}"),
-                    entity_ref: None,
-                });
-            }
-        }
-    }
-    // Entities — one compiled schema reused across all instances of a kind.
-    for (kind, coll, map) in entity_collections(b) {
-        let Some(sch) = compile_for_kind(kind, defs) else {
-            continue;
-        };
-        for (id, value) in map {
-            if let Err(errors) = sch.validate(value) {
-                for e in errors {
-                    out.push(Diagnostic {
-                        code: DiagnosticCode::SchemaValidationFailed,
-                        severity: Severity::Warning,
-                        message: format!("{kind}: {e}"),
-                        entity_ref: Some(format!("{coll}/{id}")),
-                    });
+/// The schema that pins one entity kind (or `manifest`) for one spec
+/// version, compiled once per process.
+///
+/// The embedded schemas are compile-time constants, so compiling one is a
+/// pure function of its arguments; doing it on every `add_entity` cost more
+/// than the add itself once the 1.1 schema's hundred vocabularies were in
+/// it. Returns `None` for an unknown version, or if compilation fails — the
+/// embedded schema being malformed would be a build-time bug, and a test
+/// compiles every kind of both versions to rule it out — in which case
+/// structural checks are skipped rather than propagating an internal error.
+pub(crate) fn compiled(version: &str, kind: &str) -> Option<&'static JSONSchema> {
+    static CACHE: OnceLock<HashMap<(&'static str, &'static str), JSONSchema>> = OnceLock::new();
+    const KINDS: [&str; 9] = [
+        "manifest",
+        "person",
+        "family",
+        "event",
+        "link",
+        "occupation",
+        "source",
+        "place",
+        "document",
+    ];
+    let cache = CACHE.get_or_init(|| {
+        let mut out = HashMap::new();
+        for v in crate::SUPPORTED_SPEC_VERSIONS {
+            let Some((_, text)) = schema_for(v) else {
+                continue;
+            };
+            let Ok(root) = serde_json::from_str::<Value>(text) else {
+                continue;
+            };
+            let Some(defs) = root.get("$defs") else {
+                continue;
+            };
+            for k in KINDS {
+                let wrapper = json!({ "$defs": defs, "$ref": format!("#/$defs/{k}") });
+                if let Ok(schema) = JSONSchema::compile(&wrapper) {
+                    out.insert((*v, k), schema);
                 }
             }
+        }
+        out
+    });
+    let v = crate::SUPPORTED_SPEC_VERSIONS
+        .iter()
+        .find(|s| **s == version)?;
+    let k = KINDS.iter().find(|s| **s == kind)?;
+    cache.get(&(*v, *k))
+}
+
+/// Schema findings for one value, minus the enumeration failures inside 1.1
+/// content that the profile checks report as `OUT_OF_VOCABULARY`.
+pub(crate) fn schema_diagnostics(
+    version: &str,
+    kind_name: &str,
+    kind: Option<EntityKind>,
+    value: &Value,
+    entity_ref: Option<String>,
+) -> Vec<Diagnostic> {
+    let Some(sch) = compiled(version, kind_name) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    if let Err(errors) = sch.validate(value) {
+        for e in errors {
+            let is_enum = matches!(
+                e.kind,
+                ValidationErrorKind::Enum { .. } | ValidationErrorKind::PropertyNames { .. }
+            );
+            let path = e.instance_path.to_string();
+            if profile::is_vocabulary_error(kind, &path, is_enum)
+                || (kind.is_some() && profile::is_declaration_error(&path, value, version))
+            {
+                continue;
+            }
+            out.push(Diagnostic {
+                code: DiagnosticCode::SchemaValidationFailed,
+                severity: Severity::Warning,
+                message: format!("{kind_name}: {e}"),
+                entity_ref: entity_ref.clone(),
+            });
+        }
+    }
+    out
+}
+
+fn structural(b: &FlatBundle, version: &str, out: &mut Vec<Diagnostic>) {
+    // Manifest — special: no entity id, no collection ref.
+    out.extend(schema_diagnostics(
+        version,
+        "manifest",
+        None,
+        &b.manifest,
+        None,
+    ));
+    // Entities — one compiled schema reused across all instances of a kind.
+    for (kind, coll, map) in typed_collections(b) {
+        for (id, value) in map {
+            out.extend(schema_diagnostics(
+                version,
+                kind.singular(),
+                Some(kind),
+                value,
+                Some(format!("{coll}/{id}")),
+            ));
         }
     }
 }
@@ -418,6 +503,20 @@ fn child_ids(f: &Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// [`entity_collections`], with each collection's [`EntityKind`].
+fn typed_collections(b: &FlatBundle) -> [(EntityKind, &'static str, &BTreeMap<String, Value>); 8] {
+    [
+        (EntityKind::Person, "persons", &b.persons),
+        (EntityKind::Family, "families", &b.families),
+        (EntityKind::Event, "events", &b.events),
+        (EntityKind::Link, "links", &b.links),
+        (EntityKind::Occupation, "occupations", &b.occupations),
+        (EntityKind::Source, "sources", &b.sources),
+        (EntityKind::Place, "places", &b.places),
+        (EntityKind::Document, "documents", &b.documents),
+    ]
 }
 
 /// Yield `(kind, collection, &map)` for every entity collection in the

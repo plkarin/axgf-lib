@@ -258,16 +258,41 @@ fn family_from_spec_4_2_parses() {
         "notes": "Famille installée à Paris."
     });
     let f: Family = parse(&input);
-    assert_eq!(f.union.kind, "marriage");
-    assert_eq!(f.union.status.as_deref(), Some("ended_by_death"));
-    assert_eq!(f.union.persons.len(), 2);
+    let union = f.union.as_ref().expect("this family has a union");
+    assert_eq!(union.kind, "marriage");
+    assert_eq!(union.status.as_deref(), Some("ended_by_death"));
+    assert_eq!(union.persons.len(), 2);
     assert_eq!(
-        f.union.end.as_ref().unwrap().reason.as_deref(),
+        union.end.as_ref().unwrap().reason.as_deref(),
         Some("death_of_spouse")
     );
     assert_eq!(f.children.len(), 1);
     assert_eq!(f.children[0].birth_order, Some(1));
     assert_eq!(f.documents[0].role.as_deref(), Some("family_photo"));
+}
+
+#[test]
+fn a_sibling_group_with_no_union_parses() {
+    // SPEC §4.2.3: parents unknown, so no union. The typed model required
+    // one until 0.4.0 and refused the shape the specification had already
+    // made valid.
+    let input = json!({
+        "id": "550e8400-e29b-41d4-a716-446655440042",
+        "type": "family",
+        "axgf_version": "1.0",
+        "children": [
+            {"person_id": "aaaa1234-e29b-41d4-a716-446655440021", "birth_order": 1},
+            {"person_id": "aaaa1234-e29b-41d4-a716-446655440022", "birth_order": 2}
+        ]
+    });
+    let f: Family = parse(&input);
+    assert!(f.union.is_none());
+    assert_eq!(f.children.len(), 2);
+    let back = serde_json::to_value(&f).unwrap();
+    assert!(
+        back.get("union").is_none(),
+        "no union is written back: {back}"
+    );
 }
 
 #[test]
@@ -290,12 +315,13 @@ fn polygamous_family_extras_survive() {
         }
     });
     let f: Family = parse(&input);
+    let union = f.union.as_ref().expect("this family has a union");
     // Both unknown fields captured in extras.
     assert_eq!(
-        f.union.extra["primary_person_id"],
+        union.extra["primary_person_id"],
         "aaaa1234-e29b-41d4-a716-446655440020"
     );
-    let unions = f.union.extra["unions"].as_array().unwrap();
+    let unions = union.extra["unions"].as_array().unwrap();
     assert_eq!(unions.len(), 2);
     assert_eq!(
         unions[1]["spouse_id"],

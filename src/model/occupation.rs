@@ -48,6 +48,10 @@ pub struct Occupation {
     /// Normalized title for classification (e.g. `teacher`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_normalized: Option<String>,
+    /// 1.1: the post held, where `title` is the occupation: title `teacher`,
+    /// position `headmaster` (SPEC_1.1 §5.8).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<String>,
     /// Optional employer block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub employer: Option<Employer>,
