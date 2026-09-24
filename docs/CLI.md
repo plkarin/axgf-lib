@@ -126,9 +126,8 @@ wrote t.axgf (8 KiB)
 
 $ axgf validate /tmp/t.axgf
 validated t.axgf
-  errors                     0
-  warnings                   3
-  SCHEMA_VALIDATION_FAILED   3
+  errors     0
+  warnings   0
 
 $ axgf inspect /tmp/t.axgf
 t.axgf
@@ -244,9 +243,8 @@ present — the report *is* the answer.
 ```console
 $ axgf validate /tmp/t.axgf
 validated t.axgf
-  errors                     0
-  warnings                   3
-  SCHEMA_VALIDATION_FAILED   3
+  errors     0
+  warnings   0
 ```
 
 Exit codes: `0` clean or warnings-only, `1` unparseable / unsupported

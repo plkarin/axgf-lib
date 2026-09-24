@@ -20,7 +20,7 @@
 
 ## What this is
 
-`axgf-lib` is the reference implementation of the AXGF standard, written in Rust and compiled to run everywhere: in the browser (WebAssembly), on desktop clients (native library / Tauri), on mobile (Android & iOS via UniFFI), and from any language over a C ABI.
+`axgf-lib` is the reference implementation of the AXGF standard, written in Rust with no system dependencies. It is used today as a Rust crate and as the `axgf` command-line tool, which is released for Linux, macOS and Windows. Adapters for WebAssembly, a C ABI and UniFFI (Android & iOS) exist in the source; see [Platform bindings](#platform-bindings) for how far each one actually goes.
 
 Applications — SaaS backends, desktop apps, CLIs — call this library to manipulate genealogy data. They never parse, validate, or merge AXGF themselves. Axiom provides the specification and this library; clients build their own products on top.
 
@@ -56,12 +56,16 @@ Or add it manually to `Cargo.toml`:
 axgf-rs = "0.4"
 ```
 
-Optional adapters are gated behind Cargo features (see the [Platform bindings](#platform-bindings) section for the full table):
+A library-only consumer who does not want the CLI's `clap` dependency turns
+the default features off and keeps the GEDCOM converter:
 
 ```toml
 [dependencies]
-axgf-rs = { version = "0.4", features = ["wasm"] }
+axgf-rs = { version = "0.4", default-features = false, features = ["gedcom"] }
 ```
+
+Adapters for other platforms are Cargo features too; see
+[Platform bindings](#platform-bindings) for which of them are finished.
 
 The pre-1.0 version signals that the public API may still change. The AXGF **format** version and the crate **version** are independent — this crate reads and writes AXGF 1.0 and 1.1.
 
@@ -76,8 +80,10 @@ the fast path.
 cargo install axgf-rs
 ```
 
-Pre-built binaries for Linux (musl static + glibc), macOS, and Windows are
-attached to each tagged release on GitHub. Library-only consumers who
+Pre-built `axgf` binaries for six targets — Linux x86-64 (glibc and static
+musl) and ARM64, macOS Intel and Apple Silicon, and Windows x86-64 — are
+attached to the [GitHub releases](https://github.com/plkarin/axgf-lib/releases)
+with a `.sha256` beside each. Library-only consumers who
 want to avoid the `clap` dependency can opt out with
 `default-features = false, features = ["gedcom"]`.
 
@@ -105,9 +111,8 @@ wrote t.axgf (8 KiB)
 
 $ axgf validate /tmp/t.axgf
 validated t.axgf
-  errors                     0
-  warnings                   3
-  SCHEMA_VALIDATION_FAILED   3
+  errors     0
+  warnings   0
 
 $ axgf inspect /tmp/t.axgf
 t.axgf
@@ -288,19 +293,16 @@ See [`docs/API.md`](./docs/API.md) for the full function-by-function surface.
 
 ## Platform bindings
 
-The same core is exposed to every target through thin, logic-free adapters, selected by Cargo feature:
+The same core is meant to reach every target through thin, logic-free adapters, selected by Cargo feature. Only the first row is finished:
 
-| Target | Feature | Mechanism |
-|---|---|---|
-| Rust | *(default)* | native crate |
-| Web / Node / Tauri webview | `wasm` | WebAssembly via `wasm-bindgen` |
-| Desktop / other languages | `cffi` | C ABI |
-| Android / iOS | `mobile` | Kotlin & Swift via UniFFI |
+| Target | Feature | Mechanism | Status |
+|---|---|---|---|
+| Rust | *(default)* | native crate | **Works** — on crates.io; what axgf-cms is built on |
+| Web / Node / Tauri webview | `wasm` | WebAssembly via `wasm-bindgen` | **Does not build** for `wasm32-unknown-unknown` today: a dependency pulls in `getrandom` 0.3, which needs its `wasm_js` backend enabled. No npm package. |
+| Desktop / other languages | `cffi` | C ABI | Compiles; no header or packaged library is published |
+| Android / iOS | `mobile` | Kotlin & Swift via UniFFI | Compiles on the host; no generated bindings are published |
 
-```toml
-[dependencies]
-axgf-rs = { version = "0.4", features = ["wasm"] }
-```
+The adapters hold no logic of their own, so finishing one is packaging work, not a port.
 
 ---
 
@@ -308,7 +310,9 @@ axgf-rs = { version = "0.4", features = ["wasm"] }
 
 **Pre-1.0, in production.** The V1 surface described above is complete and published on crates.io as `axgf-rs`, and [axgf-cms](https://github.com/plkarin/axgf-cms) runs on it: every bundle it serves is created, validated, imported and exported through this library. The API and the design contract are settled, and the diagnostic codes are a stable contract.
 
-The version stays below `1.0.0` because the Rust signatures may still change — 0.4.0 made `Family::union` optional to match the specification, the one change in it that can break a caller. Pin a minor version if that matters to you. The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and the 1.1 draft. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
+The version stays below `1.0.0` because the Rust signatures may still change — 0.4.0 made `Family::union` optional to match the specification, the one change in it that can break a caller. Pin a minor version if that matters to you.
+
+`main` is **0.5.0, not yet published**: `deduplicate` now merges a couple entered twice when one record leaves the union type `unknown`, and merges `union` field by field so the fuller record's marriage date survives (see the [changelog](./CHANGELOG.md)). crates.io serves 0.4.0 until then. The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and the 1.1 draft. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
 
 ---
 
