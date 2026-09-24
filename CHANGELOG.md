@@ -5,6 +5,36 @@ All notable changes to `axgf-rs` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — Unreleased
+
+`deduplicate()` merges a couple entered twice when one record leaves the kind
+of union unrecorded, and keeps everything either record knew. The boundary is
+unchanged. MSRV unchanged at **1.88.0**.
+
+### Fixed
+
+- **The `unknown` union type no longer counts as a disagreement.**
+  `union.type` is required by the schema, so `"unknown"` is the only way a
+  conforming bundle can say the kind of union was not recorded. The ambiguity
+  check put it in the set of types like any other value, so a pair with
+  `marriage` on one side and `unknown` on the other was refused with
+  `MANUAL_REVIEW_REQUIRED`. It is now treated as the absence it is — which the
+  check already did for a missing key. Two recorded types that differ are still
+  refused.
+- **`union` is merged field by field.** It was one top-level key among the
+  others, so the keeper's `union` — the lowest UUID's, which says nothing about
+  which record is fuller — was kept whole and the victim's discarded. The
+  keeper now gains every union field it leaves unrecorded (absent, `null`,
+  empty or `unknown`), `start` and `end` are merged the same way one level
+  down, `persons` are unioned on `person_id`, and a value the keeper did record
+  is never overwritten.
+
+The two ship together deliberately: the first alone turns a reported duplicate
+into a merge that silently drops the marriage's date, place and event whenever
+the thin record has the lower UUID. On the bundle this was found on, 0.4.0
+merged none of its two remaining duplicate couples and refused both; 0.5.0
+merges both, and the surviving record of each keeps its date.
+
 ## [0.4.0] — 2026-09-15
 
 AXGF 1.1: the extended person profile. The library reads, validates, writes
@@ -101,6 +131,7 @@ the version rules. Mutation-checked: silencing the vocabulary check fails 16
 of them, and letting the schema's enumeration failure through as well fails
 15.
 
+[0.5.0]: https://github.com/plkarin/axgf-lib/compare/v0.4.0...main
 [0.4.0]: https://github.com/plkarin/axgf-lib/releases/tag/v0.4.0
 
 ## [0.3.0] — 2026-08-17

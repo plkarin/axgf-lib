@@ -322,7 +322,13 @@ fn is_ambiguous_family_group(fids: &[String], b: &FlatBundle) -> bool {
             .and_then(|u| u.get("type"))
             .and_then(Value::as_str)
         {
-            union_types.insert(t.to_string());
+            // `unknown` is how a conforming bundle writes "not recorded":
+            // `union.type` is required, so it has no other way to say it. An
+            // absence does not disagree with a recorded type — a missing key
+            // was already tolerated here, and this is the same statement.
+            if !is_unrecorded(&Value::String(t.to_string())) {
+                union_types.insert(t.to_string());
+            }
         }
         if let Some(y) = f
             .get("union")
@@ -371,6 +377,10 @@ fn merge_family_records(b: &mut FlatBundle, keeper: &str, victims: &[String]) {
                 union_docs(k_obj, val);
                 continue;
             }
+            if key == "union" {
+                merge_union(k_obj, val);
+                continue;
+            }
             match k_obj.get(key) {
                 None | Some(Value::Null) => {
                     k_obj.insert(key.clone(), val.clone());
@@ -395,6 +405,88 @@ fn merge_family_records(b: &mut FlatBundle, keeper: &str, victims: &[String]) {
                 seen.insert(id)
             });
         }
+    }
+}
+
+/// Whether a value says nothing: absent, `null`, an empty string, or the
+/// schema's `unknown` sentinel.
+fn is_unrecorded(v: &Value) -> bool {
+    match v {
+        Value::Null => true,
+        Value::String(s) => s.is_empty() || s == "unknown",
+        _ => false,
+    }
+}
+
+/// Merge the victim's `union` into the keeper's, field by field.
+///
+/// `union` used to be one top-level key among the others: the keeper already
+/// had one, so the victim's was skipped whole. The keeper is the lowest UUID,
+/// which says nothing about which record is the better one — on the bundle
+/// this was found on it was the thin record, and the marriage's type, date,
+/// place and event went with the victim.
+///
+/// So: `persons` are unioned on `person_id`; every other field the keeper
+/// leaves unrecorded — absent, `null`, empty or `unknown` — is taken from the
+/// victim; and an object both sides hold (`start`, `end`) is merged the same
+/// way one level down, so a keeper that knows the place of a marriage but not
+/// its date gains the date without losing the place. Where both sides record
+/// a value, the keeper's stands: the ambiguity check has already refused any
+/// group whose recorded types or start years disagree.
+fn merge_union(k_obj: &mut Map<String, Value>, victim_union: &Value) {
+    let Some(v_union) = victim_union.as_object() else {
+        return;
+    };
+    let entry = k_obj
+        .entry("union".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if entry.is_null() {
+        *entry = Value::Object(Map::new());
+    }
+    let Some(k_union) = entry.as_object_mut() else {
+        return;
+    };
+    for (key, val) in v_union {
+        if key == "persons" {
+            let Some(v_persons) = val.as_array() else {
+                continue;
+            };
+            let slot = k_union
+                .entry("persons".to_string())
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Some(k_persons) = slot.as_array_mut() {
+                // Duplicates on `person_id` are removed after the merge.
+                k_persons.extend(v_persons.iter().cloned());
+            }
+            continue;
+        }
+        fill_unrecorded(k_union, key, val);
+    }
+}
+
+/// Put `val` at `key` where the keeper records nothing there, and descend
+/// into an object both sides hold.
+fn fill_unrecorded(k_map: &mut Map<String, Value>, key: &str, val: &Value) {
+    if is_unrecorded(val) && k_map.contains_key(key) {
+        return;
+    }
+    match k_map.get_mut(key) {
+        None => {
+            k_map.insert(key.to_string(), val.clone());
+        }
+        Some(existing) if is_unrecorded(existing) => {
+            if !is_unrecorded(val) {
+                *existing = val.clone();
+            }
+        }
+        Some(Value::Object(k_sub)) => {
+            if let Some(v_sub) = val.as_object() {
+                for (sub_key, sub_val) in v_sub {
+                    fill_unrecorded(k_sub, sub_key, sub_val);
+                }
+            }
+        }
+        Some(_) => {}
     }
 }
 

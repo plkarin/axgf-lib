@@ -135,6 +135,159 @@ fn families_with_different_union_type_are_flagged_not_merged() {
     assert!(env.data["bundle"]["families"][fb].is_object());
 }
 
+/// The operator's own duplicate, verbatim: the same couple entered twice by a
+/// GEDCOM conversion, once as a thin record whose `union.type` is the
+/// `unknown` sentinel and once with the marriage, its date, place and event.
+/// Only the people are stand-ins — their records are not what is under test.
+///
+/// Before 0.5.0 this pair was refused as ambiguous, because `unknown` counted
+/// as a union type that disagreed with `marriage`. Fixing only that would have
+/// merged it into the *thin* record — the keeper is the lowest UUID — and
+/// discarded the victim's `union` whole, date and all. Both halves ship
+/// together, and this is the pair that says so.
+fn operators_duplicate_pair() -> (Value, Value) {
+    let thin = json!({
+        "id": "e823f9e2-8817-4d44-aabb-8b3999dcffe6",
+        "type": "family", "axgf_version": "1.0",
+        "created_at": "2026-08-09T13:15:54Z", "updated_at": "2026-08-09T13:15:54Z",
+        "version_num": 1,
+        "union": {
+            "type": "unknown",
+            "persons": [
+                {"person_id": "df124fc1-f59a-46a9-b8e6-21481bcff2d4", "role": "spouse"},
+                {"person_id": "c75f5032-038c-46b3-b818-d97f9089fd67", "role": "spouse"}
+            ],
+            "confidence": 0.8
+        },
+        "children": [{"person_id": "5eb76a82-bc24-409f-b3fa-d04f9e759a7a", "confidence": 0.8}]
+    });
+    let full = json!({
+        "id": "f6c1c9ae-82b2-44b6-92fc-390c85566f65",
+        "type": "family", "axgf_version": "1.0",
+        "created_at": "2026-08-09T13:15:54Z", "updated_at": "2026-08-09T13:15:54Z",
+        "version_num": 1,
+        "union": {
+            "type": "marriage",
+            "persons": [
+                {"person_id": "c75f5032-038c-46b3-b818-d97f9089fd67", "role": "spouse"},
+                {"person_id": "df124fc1-f59a-46a9-b8e6-21481bcff2d4", "role": "spouse"}
+            ],
+            "confidence": 0.8,
+            "start": {
+                "date": {"value": "1991-08-24", "precision": "exact",
+                         "calendar": "gregorian", "circa": false},
+                "place_id": "e93709ad-3e83-4bb2-9063-0d0e5fc28d2b",
+                "event_id": "d774f0ab-969e-4197-8ca6-32f85609c9eb"
+            },
+            "status": "unknown"
+        },
+        "children": [{"person_id": "5eb76a82-bc24-409f-b3fa-d04f9e759a7a", "confidence": 0.8}]
+    });
+    (thin, full)
+}
+
+#[test]
+fn the_operators_duplicate_couple_merges_and_keeps_the_date_the_thin_record_lacked() {
+    let (thin, full) = operators_duplicate_pair();
+    let (h, w, kid) = (
+        "df124fc1-f59a-46a9-b8e6-21481bcff2d4",
+        "c75f5032-038c-46b3-b818-d97f9089fd67",
+        "5eb76a82-bc24-409f-b3fa-d04f9e759a7a",
+    );
+    let thin_id = thin["id"].as_str().unwrap().to_string();
+    let full_id = full["id"].as_str().unwrap().to_string();
+    let mut b = create_bundle(None).data;
+    b["persons"] = json!({
+        h: person(h, "Husband", Some("1965"), None),
+        w: person(w, "Wife", Some("1968"), None),
+        kid: person(kid, "Child", Some("1993"), None),
+    });
+    b["families"] = json!({ &thin_id: thin, &full_id: full });
+
+    let env = deduplicate(&to_str(&b));
+    assert_eq!(env.status, Status::Ok);
+    assert_eq!(env.data["merged_families"], 1, "{:?}", env.diagnostics);
+    assert_eq!(env.data["manual_review"], 0, "{:?}", env.diagnostics);
+
+    let fams = &env.data["bundle"]["families"];
+    assert!(fams.get(&full_id).is_none(), "the victim is gone");
+    let kept = &fams[&thin_id];
+    assert!(kept.is_object(), "the lowest UUID is still the keeper");
+    let u = &kept["union"];
+    // What the thin record lacked, and the whole point of this release.
+    assert_eq!(u["start"]["date"]["value"], "1991-08-24");
+    assert_eq!(u["start"]["date"]["precision"], "exact");
+    assert_eq!(
+        u["start"]["place_id"],
+        "e93709ad-3e83-4bb2-9063-0d0e5fc28d2b"
+    );
+    assert_eq!(
+        u["start"]["event_id"],
+        "d774f0ab-969e-4197-8ca6-32f85609c9eb"
+    );
+    // `unknown` gave way to the type the other record did record.
+    assert_eq!(u["type"], "marriage");
+    // The couple is still two people, not four.
+    assert_eq!(u["persons"].as_array().unwrap().len(), 2);
+    assert_eq!(kept["children"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn a_union_field_both_records_hold_keeps_the_keepers_and_fills_only_the_gaps() {
+    let mut b = create_bundle(None).data;
+    let p1 = "550e8400-e29b-41d4-a716-446655440001";
+    let p2 = "550e8400-e29b-41d4-a716-446655440002";
+    let fa = "aaaa1234-e29b-41d4-a716-446655440001";
+    let fb = "bbbb1234-e29b-41d4-a716-446655440001";
+    b["persons"] = json!({ p1: person(p1, "A", None, None), p2: person(p2, "B", None, None) });
+    // The keeper knows where; the victim knows when. Neither may be lost.
+    let mut keeper = family(fa, &[p1, p2], &[]);
+    keeper["union"]["start"] = json!({"place_id": "11111111-1111-4111-8111-111111111111"});
+    keeper["union"]["confidence"] = json!(0.9);
+    let mut victim = family(fb, &[p1, p2], &[]);
+    victim["union"]["start"] = json!({
+        "date": {"value": "1950", "precision": "year"},
+        "place_id": "22222222-2222-4222-8222-222222222222"
+    });
+    victim["union"]["confidence"] = json!(0.4);
+    b["families"] = json!({ fa: keeper, fb: victim });
+
+    let env = deduplicate(&to_str(&b));
+    assert_eq!(env.data["merged_families"], 1);
+    let u = &env.data["bundle"]["families"][fa]["union"];
+    assert_eq!(u["start"]["date"]["value"], "1950", "the gap is filled");
+    assert_eq!(
+        u["start"]["place_id"], "11111111-1111-4111-8111-111111111111",
+        "a value the keeper recorded is not overwritten"
+    );
+    assert_eq!(u["confidence"], 0.9);
+}
+
+#[test]
+fn two_recorded_types_that_disagree_are_still_refused_when_one_side_is_unknown_too() {
+    // The sentinel is ignored, not the check: marriage against cohabitation
+    // is a real disagreement whatever a third record leaves unrecorded.
+    let mut b = create_bundle(None).data;
+    let p1 = "550e8400-e29b-41d4-a716-446655440001";
+    let p2 = "550e8400-e29b-41d4-a716-446655440002";
+    let ids = [
+        "aaaa1234-e29b-41d4-a716-446655440001",
+        "bbbb1234-e29b-41d4-a716-446655440001",
+        "cccc1234-e29b-41d4-a716-446655440001",
+    ];
+    b["persons"] = json!({ p1: person(p1, "A", None, None), p2: person(p2, "B", None, None) });
+    let mut fams = serde_json::Map::new();
+    for (id, t) in ids.iter().zip(["unknown", "marriage", "cohabitation"]) {
+        let mut f = family(id, &[p1, p2], &[]);
+        f["union"]["type"] = json!(t);
+        fams.insert(id.to_string(), f);
+    }
+    b["families"] = Value::Object(fams);
+    let env = deduplicate(&to_str(&b));
+    assert_eq!(env.data["merged_families"], 0);
+    assert_eq!(env.data["manual_review"], 1);
+}
+
 // ---------- Person pass ----------
 
 #[test]

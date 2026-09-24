@@ -1,6 +1,6 @@
 [package]
 name = "axgf-rs"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.88"
 description = "Reference implementation of the Axiom Genealogy Format (AXGF) 1.0 and 1.1 — a stateless JSON-boundary library for creating, validating, importing, exporting, and converting genealogy bundles, with the 1.1 person profile's vocabularies and registry (GEDCOM 5.5.1 supported)."
