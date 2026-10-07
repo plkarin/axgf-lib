@@ -5,11 +5,17 @@ All notable changes to `axgf-rs` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] — Unreleased
+## [0.5.0] — 2026-10-07
 
 `deduplicate()` merges a couple entered twice when one record leaves the kind
 of union unrecorded, and keeps everything either record knew. The boundary is
-unchanged. MSRV unchanged at **1.88.0**.
+unchanged. MSRV unchanged at **1.88.0**, verified with `cargo msrv`.
+
+### Changed
+
+- **The embedded 1.1 schema is the frozen AXGF 1.1.0** (axgf-spec `v1.1.0`):
+  identical in every definition to the one 0.4.0 carried, with its description
+  and `version` no longer saying draft. Bundles written by 0.4.0 stay valid.
 
 ### Fixed
 
