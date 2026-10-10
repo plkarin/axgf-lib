@@ -53,7 +53,7 @@ Or add it manually to `Cargo.toml`:
 
 ```toml
 [dependencies]
-axgf-rs = "0.4"
+axgf-rs = "0.5"
 ```
 
 A library-only consumer who does not want the CLI's `clap` dependency turns
@@ -61,13 +61,15 @@ the default features off and keeps the GEDCOM converter:
 
 ```toml
 [dependencies]
-axgf-rs = { version = "0.4", default-features = false, features = ["gedcom"] }
+axgf-rs = { version = "0.5", default-features = false, features = ["gedcom"] }
 ```
 
 Adapters for other platforms are Cargo features too; see
 [Platform bindings](#platform-bindings) for which of them are finished.
 
-The pre-1.0 version signals that the public API may still change. The AXGF **format** version and the crate **version** are independent — this crate reads and writes AXGF 1.0 and 1.1.
+The pre-1.0 version signals that the public API may still change. The AXGF **format** version and the crate **version** are independent — this crate reads and writes AXGF 1.0 and 1.1, and embeds the frozen **AXGF 1.1.0** schema.
+
+Minimum supported Rust version: **1.88** (`rust-version` in `Cargo.toml`, checked with `cargo msrv`).
 
 ### Command-line binary
 
@@ -222,7 +224,7 @@ Deliberately **not** in V1: graph traversal, a query engine, sessions, disk acce
 ## Quick start
 
 Create a bundle, add a person, validate it, write the archive, read it back.
-Compiled and run against `axgf-rs` 0.4.0 exactly as printed:
+Compiled and run against `axgf-rs` 0.5.0 from crates.io exactly as printed:
 
 ```rust
 use std::io::Cursor;
@@ -312,7 +314,7 @@ The adapters hold no logic of their own, so finishing one is packaging work, not
 
 The version stays below `1.0.0` because the Rust signatures may still change — 0.4.0 made `Family::union` optional to match the specification, the one change in it that can break a caller. Pin a minor version if that matters to you.
 
-`main` is **0.5.0, not yet published**: `deduplicate` now merges a couple entered twice when one record leaves the union type `unknown`, and merges `union` field by field so the fuller record's marriage date survives (see the [changelog](./CHANGELOG.md)). crates.io serves 0.4.0 until then. The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and the 1.1 draft. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
+The current release is **0.5.0**, on crates.io: it embeds the frozen AXGF 1.1.0 schema, and `deduplicate` merges a couple entered twice when one record leaves the union type `unknown`, field by field so the fuller record's marriage date survives (see the [changelog](./CHANGELOG.md)). The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and 1.1.0. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
 
 ---
 
