@@ -575,8 +575,8 @@ fn a_person_merge_lists_the_families_that_now_describe_one_couple() {
     // The grandfather entered twice, each record married to the same wife.
     let (keep, absorb, wife, f1, f2, c1, c2) = (u(1), u(2), u(3), u(31), u(32), u(4), u(5));
     let b = bundle(&[
-        person(&keep, "Adam Bochenek"),
-        person(&absorb, "Adam Bochenek"),
+        person(&keep, "Feliks Brzoza"),
+        person(&absorb, "Feliks Brzoza"),
         person(&wife, "Rozalia"),
         person(&c1, "Ignacy"),
         person(&c2, "Wiktoria"),

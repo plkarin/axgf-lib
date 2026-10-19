@@ -1522,7 +1522,7 @@ println!("merged {} persons, {} families", d["merged_persons"], d["merged_famili
 #### Demo B - homonyms that must NOT be merged
 
 *Reproduces: the trap that makes naive deduplication destructive. Two men
-named Henryk Frick exist - one is the spouse in family F, the other is a
+named Tobiasz Lipa exist - one is the spouse in family F, the other is a
 child of that same family. They are father and son. The library detects the
 generational relationship and refuses.*
 

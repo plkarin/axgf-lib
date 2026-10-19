@@ -147,41 +147,41 @@ fn families_with_different_union_type_are_flagged_not_merged() {
 /// together, and this is the pair that says so.
 fn operators_duplicate_pair() -> (Value, Value) {
     let thin = json!({
-        "id": "e823f9e2-8817-4d44-aabb-8b3999dcffe6",
+        "id": "e15c8a3f-3b2d-4f61-8e5a-0c9d2b7f3e41",
         "type": "family", "axgf_version": "1.0",
         "created_at": "2026-08-09T13:15:54Z", "updated_at": "2026-08-09T13:15:54Z",
         "version_num": 1,
         "union": {
             "type": "unknown",
             "persons": [
-                {"person_id": "df124fc1-f59a-46a9-b8e6-21481bcff2d4", "role": "spouse"},
-                {"person_id": "c75f5032-038c-46b3-b818-d97f9089fd67", "role": "spouse"}
+                {"person_id": "db8f306a-1d4b-4f86-8c2a-7e0b5d3f9a12", "role": "spouse"},
+                {"person_id": "c1e86b2d-9a3f-4c71-b5e0-2d4f7a9c1e36", "role": "spouse"}
             ],
             "confidence": 0.8
         },
-        "children": [{"person_id": "5eb76a82-bc24-409f-b3fa-d04f9e759a7a", "confidence": 0.8}]
+        "children": [{"person_id": "5a2c9e47-7e2b-4d58-a1c6-9b0e3f5d2a78", "confidence": 0.8}]
     });
     let full = json!({
-        "id": "f6c1c9ae-82b2-44b6-92fc-390c85566f65",
+        "id": "f0a7c2e9-6a19-4c83-9d4e-1f8a3c6b2d90",
         "type": "family", "axgf_version": "1.0",
         "created_at": "2026-08-09T13:15:54Z", "updated_at": "2026-08-09T13:15:54Z",
         "version_num": 1,
         "union": {
             "type": "marriage",
             "persons": [
-                {"person_id": "c75f5032-038c-46b3-b818-d97f9089fd67", "role": "spouse"},
-                {"person_id": "df124fc1-f59a-46a9-b8e6-21481bcff2d4", "role": "spouse"}
+                {"person_id": "c1e86b2d-9a3f-4c71-b5e0-2d4f7a9c1e36", "role": "spouse"},
+                {"person_id": "db8f306a-1d4b-4f86-8c2a-7e0b5d3f9a12", "role": "spouse"}
             ],
             "confidence": 0.8,
             "start": {
-                "date": {"value": "1991-08-24", "precision": "exact",
+                "date": {"value": "1987-05-16", "precision": "exact",
                          "calendar": "gregorian", "circa": false},
-                "place_id": "e93709ad-3e83-4bb2-9063-0d0e5fc28d2b",
-                "event_id": "d774f0ab-969e-4197-8ca6-32f85609c9eb"
+                "place_id": "e9b2d6c4-4b7e-4c39-9a1f-3e6d0b8c2f57",
+                "event_id": "d29a5c7e-2f9a-4d36-9e7c-5a1d3b8f0c64"
             },
             "status": "unknown"
         },
-        "children": [{"person_id": "5eb76a82-bc24-409f-b3fa-d04f9e759a7a", "confidence": 0.8}]
+        "children": [{"person_id": "5a2c9e47-7e2b-4d58-a1c6-9b0e3f5d2a78", "confidence": 0.8}]
     });
     (thin, full)
 }
@@ -190,9 +190,9 @@ fn operators_duplicate_pair() -> (Value, Value) {
 fn the_operators_duplicate_couple_merges_and_keeps_the_date_the_thin_record_lacked() {
     let (thin, full) = operators_duplicate_pair();
     let (h, w, kid) = (
-        "df124fc1-f59a-46a9-b8e6-21481bcff2d4",
-        "c75f5032-038c-46b3-b818-d97f9089fd67",
-        "5eb76a82-bc24-409f-b3fa-d04f9e759a7a",
+        "db8f306a-1d4b-4f86-8c2a-7e0b5d3f9a12",
+        "c1e86b2d-9a3f-4c71-b5e0-2d4f7a9c1e36",
+        "5a2c9e47-7e2b-4d58-a1c6-9b0e3f5d2a78",
     );
     let thin_id = thin["id"].as_str().unwrap().to_string();
     let full_id = full["id"].as_str().unwrap().to_string();
@@ -215,15 +215,15 @@ fn the_operators_duplicate_couple_merges_and_keeps_the_date_the_thin_record_lack
     assert!(kept.is_object(), "the lowest UUID is still the keeper");
     let u = &kept["union"];
     // What the thin record lacked, and the whole point of this release.
-    assert_eq!(u["start"]["date"]["value"], "1991-08-24");
+    assert_eq!(u["start"]["date"]["value"], "1987-05-16");
     assert_eq!(u["start"]["date"]["precision"], "exact");
     assert_eq!(
         u["start"]["place_id"],
-        "e93709ad-3e83-4bb2-9063-0d0e5fc28d2b"
+        "e9b2d6c4-4b7e-4c39-9a1f-3e6d0b8c2f57"
     );
     assert_eq!(
         u["start"]["event_id"],
-        "d774f0ab-969e-4197-8ca6-32f85609c9eb"
+        "d29a5c7e-2f9a-4d36-9e7c-5a1d3b8f0c64"
     );
     // `unknown` gave way to the type the other record did record.
     assert_eq!(u["type"], "marriage");
