@@ -28,14 +28,15 @@ The crate is published as **`axgf-rs`**.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Your application (web SaaS · desktop · mobile · CLI)     │
+│  Your application (web SaaS · desktop · mobile · CLI)    │
 │  renders, persists, and exposes genealogy data           │
 └───────────────────────────┬──────────────────────────────┘
                             │ calls
 ┌───────────────────────────▼──────────────────────────────┐
-│  axgf-lib  (crate: axgf-rs)                               │
-│  create · import · export · validate · CRUD · convert     │
-│  one stateless core → WASM · native · mobile · C-FFI      │
+│  axgf-lib  (crate: axgf-rs)                              │
+│  create · import · export · validate · CRUD · merge ·    │
+│  convert                                                 │
+│  one stateless core → WASM · native · mobile · C-FFI     │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -238,7 +239,7 @@ Deliberately **not** in V1: graph traversal, a query engine, sessions, disk acce
 ## Quick start
 
 Create a bundle, add a person, validate it, write the archive, read it back.
-Compiled and run against `axgf-rs` 0.6.0 exactly as printed:
+Compiled and run against `axgf-rs` 0.6.0 from crates.io exactly as printed:
 
 ```rust
 use std::io::Cursor;
