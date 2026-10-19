@@ -11,9 +11,10 @@
 //! via `--input` (kept as an unreleased-back-compat alias). Read-only
 //! commands (`inspect`, `validate`, `import`) never take `--output`;
 //! mutating commands (`create`, `convert-gedcom`, `add`, `update`,
-//! `delete`, `dedup`, `export`) take `-o/--output`, and if omitted on a
-//! command that read a file, edit that file in place — but only after
-//! the new bytes are ready.
+//! `delete`, `dedup`, `merge`, `export`) take `-o/--output`, and if omitted
+//! on a command that read a file, edit that file in place — but only after
+//! the new bytes are ready. `merge` without `--resolutions` only plans, and
+//! writes nothing.
 
 use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
@@ -23,7 +24,7 @@ use std::process::ExitCode;
 use axgf_rs::boundary::envelope::{DiagnosticCode, Envelope, Severity, Status};
 use axgf_rs::{
     add_entity, create_bundle, deduplicate, delete_entity, export_bundle, import_bundle, inspect,
-    update_entity, validate, DeletePolicy, EntityKind,
+    merge_entities, plan_merge, update_entity, validate, DeletePolicy, EntityKind,
 };
 use base64::Engine as _;
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -138,6 +139,31 @@ enum Command {
     Dedup {
         #[command(flatten)]
         input: InputPath,
+        #[arg(short, long, value_name = "PATH")]
+        output: Option<PathBuf>,
+    },
+
+    /// Merge two records a person says are one (person, family, place,
+    /// source). Without `--resolutions`, print the plan and change nothing;
+    /// with it, merge as decided.
+    Merge {
+        #[arg(value_enum)]
+        kind: CliEntityKind,
+        #[command(flatten)]
+        input: InputPath,
+        /// The record that stays.
+        #[arg(long, value_name = "UUID")]
+        keep: String,
+        /// The record merged into it, and removed.
+        #[arg(long, value_name = "UUID")]
+        absorb: String,
+        /// The decisions, as JSON: `{"fingerprint": "<the plan's>",
+        /// "choices": {"<field>": "keep" | "absorb" | "both"}}`, plus
+        /// `"confirm"` where a refusal asks for it (`-` reads stdin).
+        #[arg(long, value_name = "PATH")]
+        resolutions: Option<PathBuf>,
+        /// Where to write the merged bundle (defaults to editing the input
+        /// file in place).
         #[arg(short, long, value_name = "PATH")]
         output: Option<PathBuf>,
     },
@@ -464,6 +490,14 @@ fn execute(cmd: Command, mode: OutputMode) -> RunResult {
             delete_entity(&flat, kind.into(), &id, policy.into())
         }),
         Command::Dedup { input, output } => cmd_dedup(input, output, mode),
+        Command::Merge {
+            kind,
+            input,
+            keep,
+            absorb,
+            resolutions,
+            output,
+        } => cmd_merge(kind, input, &keep, &absorb, resolutions, output, mode),
         #[cfg(feature = "gedcom")]
         Command::ConvertGedcom {
             input,
@@ -774,6 +808,132 @@ fn cmd_dedup(input: InputPath, output: Option<PathBuf>, mode: OutputMode) -> Run
         print_wrote(dest, bytes_written);
     }
     RunResult::from(env)
+}
+
+// -------------------------------------------------------------------------
+// merge
+// -------------------------------------------------------------------------
+
+fn cmd_merge(
+    kind: CliEntityKind,
+    input: InputPath,
+    keep: &str,
+    absorb: &str,
+    resolutions: Option<PathBuf>,
+    output: Option<PathBuf>,
+    mode: OutputMode,
+) -> RunResult {
+    let in_path = input.path().to_path_buf();
+    let flat = match read_flat_bundle(&in_path) {
+        Ok(s) => s,
+        Err(e) => return RunResult::from(e),
+    };
+    let Some(res_path) = resolutions else {
+        // The plan: printed, nothing written.
+        let env = plan_merge(&flat, kind.into(), keep, absorb);
+        if matches!(mode, OutputMode::Human) && env.status == Status::Ok {
+            print_plan(&env.data);
+        }
+        return RunResult::from(env);
+    };
+    let decided = match read_text_bytes(&res_path) {
+        Ok(s) => s,
+        Err(e) => return RunResult::from(e),
+    };
+    let env = merge_entities(&flat, kind.into(), keep, absorb, &decided);
+    if env.status == Status::Error {
+        return RunResult::from(env);
+    }
+    let dest = output.as_deref().unwrap_or(&in_path);
+    let bundle = env.data.get("bundle").cloned().unwrap_or(Value::Null);
+    let bytes_written = match write_bundle(dest, &bundle) {
+        Ok(n) => n,
+        Err(e) => return RunResult::from(e),
+    };
+    if matches!(mode, OutputMode::Human) {
+        let report = &env.data["report"];
+        let _ = writeln!(
+            io::stdout(),
+            "merged {} into {} in {}",
+            report["absorbed_id"].as_str().unwrap_or(absorb),
+            report["kept_id"].as_str().unwrap_or(keep),
+            display_short(&in_path)
+        );
+        let count = |k: &str| report[k].as_array().map_or(0, Vec::len);
+        let rewritten: u64 = report["references_rewritten"]
+            .as_object()
+            .map(|m| m.values().filter_map(Value::as_u64).sum())
+            .unwrap_or(0);
+        print_rows(vec![
+            ("decisions applied".into(), count("resolutions").to_string()),
+            ("references rewritten".into(), rewritten.to_string()),
+            ("events created".into(), count("events_created").to_string()),
+            (
+                "source conflicts added".into(),
+                count("source_conflicts_added").to_string(),
+            ),
+            ("links removed".into(), count("links_removed").to_string()),
+        ]);
+        emit_grouped_diagnostics_stderr(&env);
+        print_wrote(dest, bytes_written);
+    }
+    RunResult::from(env)
+}
+
+/// A plan, for reading: each conflict with both values and the suggestion,
+/// each refusal, and the fingerprint a resolutions file must carry.
+fn print_plan(plan: &Value) {
+    let short = |v: &Value| {
+        let s = match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        if s.chars().count() > 48 {
+            format!("{}…", s.chars().take(47).collect::<String>())
+        } else {
+            s
+        }
+    };
+    let _ = writeln!(
+        io::stdout(),
+        "plan: merge {} {} into {}",
+        plan["kind"].as_str().unwrap_or("?"),
+        plan["absorb_id"].as_str().unwrap_or("?"),
+        plan["keep_id"].as_str().unwrap_or("?")
+    );
+    let agreements = plan["agreements"].as_array().map_or(0, Vec::len);
+    let conflicts = plan["conflicts"].as_array().cloned().unwrap_or_default();
+    print_rows(vec![
+        ("fields agreed".into(), agreements.to_string()),
+        ("conflicts".into(), conflicts.len().to_string()),
+    ]);
+    for c in &conflicts {
+        let _ = writeln!(
+            io::stdout(),
+            "  {}: keep {} | absorb {} → suggested {} ({})",
+            c["field"].as_str().unwrap_or("?"),
+            short(&c["keep"]),
+            short(&c["absorb"]),
+            c["suggestion"].as_str().unwrap_or("?"),
+            c["because"].as_str().unwrap_or("")
+        );
+    }
+    for r in plan["refusals"].as_array().into_iter().flatten() {
+        let _ = writeln!(
+            io::stdout(),
+            "  refused ({}): {}",
+            r["reason"].as_str().unwrap_or("?"),
+            r["message"].as_str().unwrap_or("")
+        );
+        if let Some(phrase) = r["confirm"].as_str() {
+            let _ = writeln!(io::stdout(), "    lifted by \"confirm\": {phrase:?}");
+        }
+    }
+    let _ = writeln!(
+        io::stdout(),
+        "fingerprint {}",
+        plan["fingerprint"].as_str().unwrap_or("?")
+    );
 }
 
 // -------------------------------------------------------------------------

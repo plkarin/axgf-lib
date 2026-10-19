@@ -31,7 +31,7 @@
 //!   in [`model::profile`] the AXGF 1.1 person profile: its claim shape, its
 //!   closed vocabularies and the registry of every attribute. Never crosses
 //!   the boundary.
-//! - [`logic`] — Pure value-core: validation, CRUD, deduplication. Operates on
+//! - [`logic`] — Pure value-core: validation, CRUD, deduplication, merging. Operates on
 //!   [`model`] types, never on raw JSON.
 //! - [`boundary`] — The only layer that speaks JSON, ZIP and bytes: envelope
 //!   type, [`boundary::flat::FlatBundle`], and lifecycle helpers.
@@ -345,6 +345,64 @@ pub fn delete_entity(
 /// flagged with `MANUAL_REVIEW_REQUIRED` diagnostics rather than performed.
 pub fn deduplicate(flat_json: &str) -> Envelope {
     logic::dedup::deduplicate(flat_json)
+}
+
+/// Plan the merge of two records of one kind — two persons, families, places
+/// or sources that a person says are one — without changing anything.
+///
+/// The envelope's `data` is the plan:
+///
+/// - `agreements`: every field the two hold alike, or that one alone holds,
+///   and where the merged value comes from (`keep`, `absorb`, `both`,
+///   `joined` for lists, `combined` for two objects that do not contradict
+///   each other);
+/// - `conflicts`: every field they hold differently, with both values, the
+///   `choices` allowed (`keep`, `absorb`, and `both` for free text), a
+///   `suggestion` and `because` it is suggested, and what becomes of the
+///   value not chosen (`not_chosen_becomes`: an `alias`, or an `event`);
+/// - `effects`: references to rewrite per kind, links that would point from
+///   a record to itself, records that would list one person twice, families
+///   that would describe the same couple;
+/// - `refusals`: why the merge cannot be done, each with a `reason` code; a
+///   refusal with a `confirm` phrase is lifted by typing that phrase back
+///   (two children of the same parents);
+/// - `mergeable`, and the `fingerprint` that [`merge_entities`] checks.
+///
+/// Persons, families, places and sources are merged; any other kind is
+/// refused with `MERGE_UNSUPPORTED`. See [`logic::merge`] for every rule.
+pub fn plan_merge(flat_json: &str, kind: EntityKind, keep_id: &str, absorb_id: &str) -> Envelope {
+    logic::merge::plan_merge(flat_json, kind, keep_id, absorb_id)
+}
+
+/// Merge `absorb_id` into `keep_id` as planned by [`plan_merge`], with the
+/// caller's decisions.
+///
+/// `resolutions_json` is
+/// `{"fingerprint": "<the plan's>", "choices": {"<field>": "keep" | "absorb" | "both"}, "confirm": "<phrase>"}`,
+/// with a choice for every conflict and `confirm` only where a refusal asks
+/// for it. Refuses, changing nothing:
+///
+/// - `STALE_PLAN` when the fingerprint no longer matches (one of the records
+///   changed since the plan);
+/// - `MERGE_REFUSED` when a refusal holds;
+/// - `MERGE_UNRESOLVED` when a conflict has no choice, or one it does not
+///   allow.
+///
+/// The envelope's `data` is `{"bundle": <flat>, "report": {…}}`. The report
+/// names the kept and absorbed ids, carries **the absorbed record verbatim**,
+/// and lists every resolution applied, references rewritten per kind, events
+/// created for a birth or a death not chosen, `source.conflicts` entries
+/// added, links removed, entries tidied and families that now describe the
+/// same couple. Schema findings on the merged record are warnings, as for
+/// [`add_entity`].
+pub fn merge_entities(
+    flat_json: &str,
+    kind: EntityKind,
+    keep_id: &str,
+    absorb_id: &str,
+    resolutions_json: &str,
+) -> Envelope {
+    logic::merge::merge_entities(flat_json, kind, keep_id, absorb_id, resolutions_json)
 }
 
 /// Convert a GEDCOM 5.5.1 byte stream to a flat AXGF bundle.

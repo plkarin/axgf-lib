@@ -18,8 +18,12 @@
 //! - [`dedup`] — safe merging of duplicated persons and families, flagging
 //!   ambiguous cases with `MANUAL_REVIEW_REQUIRED` diagnostics rather than
 //!   performing them.
+//! - [`merge`] — merging two records a person says are one: a plan that
+//!   changes nothing, then the merge, with every disagreement decided by the
+//!   caller and nothing chosen silently.
 
 pub mod crud;
 pub mod dedup;
+pub mod merge;
 pub(crate) mod profile;
 pub mod validate;

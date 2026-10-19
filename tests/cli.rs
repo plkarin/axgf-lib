@@ -393,6 +393,100 @@ fn convert_gedcom_of_minimal_ged_produces_persons() {
 /// directory under `target/tmp/`, created on demand and left in place for
 /// post-mortem inspection (Cargo cleans the target directory on `cargo
 /// clean`).
+#[test]
+fn merge_plans_without_writing_then_merges_as_decided() {
+    // Two records of one woman: the plan changes nothing; the decisions
+    // merge them and write the result.
+    let (keep, absorb) = (
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+    );
+    let mut b = axgf_rs::create_bundle(None).data;
+    let p = |id: &str, display: &str, vis: &str| {
+        json!({"id": id, "type": "person", "axgf_version": "1.0",
+               "identity": {"name": {"display": display, "components": []},
+                            "gender": {"value": "F"}, "is_living": false, "visibility": vis}})
+    };
+    b["persons"][keep] = p(keep, "Zofia Mazur", "members");
+    b["persons"][absorb] = p(absorb, "Zofia Mazur", "private");
+    let dir = tempdir();
+    let input = dir.join("family.json");
+    std::fs::write(&input, b.to_string()).unwrap();
+    let before = std::fs::read(&input).unwrap();
+
+    let path = input.to_str().unwrap();
+    let (code, out, _) = run(
+        &[
+            "--json", "merge", "person", path, "--keep", keep, "--absorb", absorb,
+        ],
+        b"",
+    );
+    assert_eq!(code, 0);
+    let plan = parse_envelope(&out);
+    assert_eq!(plan.status, Status::Ok);
+    assert_eq!(
+        std::fs::read(&input).unwrap(),
+        before,
+        "a plan writes nothing"
+    );
+    let c = &plan.data["conflicts"][0];
+    assert_eq!(c["field"], "identity.visibility");
+    assert_eq!(c["suggestion"], "absorb");
+
+    let res = dir.join("decisions.json");
+    std::fs::write(
+        &res,
+        json!({"fingerprint": plan.data["fingerprint"], "choices": {"identity.visibility": "absorb"}}).to_string(),
+    )
+    .unwrap();
+    let output = dir.join("merged.json");
+    let (code, out, err) = run(
+        &[
+            "--json",
+            "merge",
+            "person",
+            path,
+            "--keep",
+            keep,
+            "--absorb",
+            absorb,
+            "--resolutions",
+            res.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ],
+        b"",
+    );
+    assert_eq!(code, 0, "{err}");
+    let env = parse_envelope(&out);
+    assert_eq!(env.data["report"]["absorbed_id"], absorb);
+    let merged: Value = serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
+    assert_eq!(merged["persons"][keep]["identity"]["visibility"], "private");
+    assert!(merged["persons"].get(absorb).is_none());
+
+    // The same decisions on a bundle edited since are refused.
+    let (code, out, _) = run(
+        &[
+            "--json",
+            "merge",
+            "person",
+            output.to_str().unwrap(),
+            "--keep",
+            keep,
+            "--absorb",
+            absorb,
+            "--resolutions",
+            res.to_str().unwrap(),
+        ],
+        b"",
+    );
+    assert_eq!(code, 1);
+    assert_eq!(
+        parse_envelope(&out).diagnostics[0].code.as_str(),
+        "ENTITY_NOT_FOUND"
+    );
+}
+
 fn tempdir() -> std::path::PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);

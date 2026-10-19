@@ -94,8 +94,9 @@ the on-disk form by extension: `.axgf` is decoded as a ZIP archive
 
 - **`create`** and **`convert-gedcom`** require `-o` (they have no input
   file that could be edited in place).
-- **`add`**, **`update`**, **`delete`**, **`dedup`**, **`export`** edit
-  the input file *in place* when `-o` is omitted. The write is atomic:
+- **`add`**, **`update`**, **`delete`**, **`dedup`**, **`merge`** (with
+  `--resolutions`), **`export`** edit the input file *in place* when `-o`
+  is omitted. The write is atomic:
   the new bytes go to a sibling tempfile first, then rename over the
   target, so a mid-write failure never leaves you with a truncated
   bundle.
@@ -337,6 +338,44 @@ wrote family.axgf (…)
 ```
 
 Exit codes: `0` on ok, `1` on bad input.
+
+---
+
+### `axgf merge`
+
+Merge two records a person says are one: persons, families, places or
+sources. Without `--resolutions`, print the plan and write nothing. With
+it, merge as decided.
+
+```
+axgf merge <KIND> <PATH> --keep <UUID> --absorb <UUID> [--resolutions <PATH>] [-o <PATH>]
+```
+
+```console
+$ axgf merge person family.axgf --keep 0c2e… --absorb 7a91…
+plan: merge person 7a91… into 0c2e…
+  fields agreed   4
+  conflicts       2
+  identity.visibility: keep members | absorb private → suggested absorb (more_restrictive)
+  birth: keep {"date":{"value":"1834-03-02"},…} | absorb {"date":{"value":"1835"},…} → suggested keep (higher_confidence)
+fingerprint 9f1c…
+
+$ cat decisions.json
+{"fingerprint": "9f1c…", "choices": {"identity.visibility": "absorb", "birth": "keep"}}
+
+$ axgf merge person family.axgf --keep 0c2e… --absorb 7a91… --resolutions decisions.json
+merged 7a91… into 0c2e… in family.axgf
+  decisions applied        2
+  references rewritten     3
+  events created           1
+  source conflicts added   1
+  links removed            0
+wrote family.axgf (…)
+```
+
+Under `--json` the plan, or the bundle and the report, come as the
+envelope. Exit codes: `0` on ok, `1` on `MERGE_REFUSED`, `MERGE_UNRESOLVED`,
+`MERGE_UNSUPPORTED`, `STALE_PLAN`, `ENTITY_NOT_FOUND` or bad input.
 
 ---
 

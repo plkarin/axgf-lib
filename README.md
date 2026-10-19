@@ -53,7 +53,7 @@ Or add it manually to `Cargo.toml`:
 
 ```toml
 [dependencies]
-axgf-rs = "0.5"
+axgf-rs = "0.6"
 ```
 
 A library-only consumer who does not want the CLI's `clap` dependency turns
@@ -61,7 +61,7 @@ the default features off and keeps the GEDCOM converter:
 
 ```toml
 [dependencies]
-axgf-rs = { version = "0.5", default-features = false, features = ["gedcom"] }
+axgf-rs = { version = "0.6", default-features = false, features = ["gedcom"] }
 ```
 
 Adapters for other platforms are Cargo features too; see
@@ -131,8 +131,9 @@ t.axgf
 
 Read-only commands (`inspect`, `validate`, `import`) never touch the
 input file. Mutating commands (`create`, `convert-gedcom`, `add`,
-`update`, `delete`, `dedup`, `export`) take `-o/--output` and edit their
-input in place when it is omitted — atomically, so a mid-write failure
+`update`, `delete`, `dedup`, `merge`, `export`) take `-o/--output` and edit
+their input in place when it is omitted (`merge` without `--resolutions`
+only prints its plan) — atomically, so a mid-write failure
 never leaves you with a truncated bundle.
 
 The exit code is `0` on success, `1` when the operation is refused, and
@@ -189,6 +190,8 @@ Diagnostic **codes** are part of the public contract and never change meaning ac
 | | `update_entity` | Replace an entity by id |
 | | `delete_entity` | Remove by id under an explicit referential-integrity policy |
 | **Cleanup** | `deduplicate` | Safely merge duplicates; flag ambiguous cases for review |
+| **Merging** | `plan_merge` | What merging two records would do — agreements, conflicts with suggestions, refusals — changing nothing |
+| | `merge_entities` | Merge as the caller decided; the absorbed record comes back verbatim |
 | **Conversion** | `convert_gedcom` | GEDCOM 5.5.1 bytes → flat AXGF bundle |
 
 ### Streaming payloads (0.3.0)
@@ -217,6 +220,17 @@ Streaming is never the default: `import_bundle` and `export_bundle` are unchange
 | **Versions** | A write that gives a 1.0 bundle 1.1 content raises its manifest to 1.1 in the same step that refreshes its stats; `SPEC_VERSION_MISMATCH` reports an entity that undersells or oversells itself. |
 | **Data** | `model::profile` holds the vocabularies and a registry of all 132 attributes — path, single or series, value shape, sensitive class — for an application to build forms and withhold classes from, without a second list. |
 
+### Merging two records (0.6.0)
+
+Someone always enters the same grandmother twice. `deduplicate` merges only exact matches; a person who knows two records are one needs more than that, and nothing chosen behind their back:
+
+| | |
+|---|---|
+| **Plan, then merge** | `plan_merge` changes nothing. It returns what the two records agree on, each field they hold differently (both values, the choices, a suggestion and why), what else the merge touches, and why it cannot be done, if it cannot. `merge_entities` applies it with the caller's choices, and refuses with `STALE_PLAN` if either record changed in between. |
+| **Nothing is lost** | A display name not chosen becomes an alias; a birth or a death not chosen becomes an event, and the chosen source records the disagreement in its `conflicts`; free text may keep both. The report carries the absorbed record verbatim. |
+| **Safe by default** | A visibility conflict suggests the more restrictive; "living or not" suggests living. An ancestor and a descendant, a spouse and a child, the two spouses of a union are never merged; two siblings only with the absorbed name typed back — a child who died young was often followed by one given the same name. |
+| **Kinds** | Persons, families, places and sources. Every reference to the absorbed record is rewritten, in all eight kinds. |
+
 Deliberately **not** in V1: graph traversal, a query engine, sessions, disk access, and rendering. Those belong to the client, or to a later version. Disk access stays out under streaming too — the library never opens a path; the caller supplies the reader and the writer it already owns, and the library only reads and writes through them.
 
 ---
@@ -224,7 +238,7 @@ Deliberately **not** in V1: graph traversal, a query engine, sessions, disk acce
 ## Quick start
 
 Create a bundle, add a person, validate it, write the archive, read it back.
-Compiled and run against `axgf-rs` 0.5.0 from crates.io exactly as printed:
+Compiled and run against `axgf-rs` 0.6.0 exactly as printed:
 
 ```rust
 use std::io::Cursor;
@@ -314,7 +328,7 @@ The adapters hold no logic of their own, so finishing one is packaging work, not
 
 The version stays below `1.0.0` because the Rust signatures may still change — 0.4.0 made `Family::union` optional to match the specification, the one change in it that can break a caller. Pin a minor version if that matters to you.
 
-The current release is **0.5.0**, on crates.io: it embeds the frozen AXGF 1.1.0 schema, and `deduplicate` merges a couple entered twice when one record leaves the union type `unknown`, field by field so the fuller record's marriage date survives (see the [changelog](./CHANGELOG.md)). The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and 1.1.0. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
+The current release is **0.6.0**, on crates.io: merging two records a person says are one, by plan and decision, with nothing chosen silently and nothing lost (see the [changelog](./CHANGELOG.md)). The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and 1.1.0. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
 
 ---
 

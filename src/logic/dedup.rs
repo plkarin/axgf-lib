@@ -572,7 +572,9 @@ fn rewrite_in_value(v: &mut Value, victims: &BTreeSet<String>, keeper: &str) {
     match v {
         Value::Object(m) => {
             for (k, val) in m.iter_mut() {
-                if k != "id" && k.ends_with("_id") {
+                // `derived_from` (a name component's source person) is a
+                // reference too, though not named `*_id`.
+                if crate::logic::merge::is_reference(k) {
                     if let Some(s) = val.as_str() {
                         if victims.contains(s) {
                             *val = Value::String(keeper.to_string());

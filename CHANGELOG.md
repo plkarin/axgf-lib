@@ -5,6 +5,87 @@ All notable changes to `axgf-rs` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-10-19
+
+Merging two records a person says are one. Someone always enters the same
+grandmother twice: `plan_merge` says what merging two persons, families,
+places or sources would do and changes nothing; `merge_entities` does it,
+with every disagreement decided by the caller and nothing chosen silently.
+No format change: everything is written with structures AXGF 1.0 and 1.1
+already define, and 1.1.0 stays frozen. The rest of the boundary is
+unchanged. MSRV unchanged at **1.88.0**.
+
+### Added
+
+- **`plan_merge(flat, kind, keep_id, absorb_id)`.** The plan:
+  - **agreements**: a value one record alone holds is taken; values both
+    hold alike are kept once; two objects that do not contradict each other
+    are combined (one birth has a date, the other the same date and a
+    place); lists are joined — other names, titles, a 1.1 attribute recorded
+    as a series, documents, children, a place's names, a source's
+    `conflicts`;
+  - **conflicts**: each field both hold differently, with both values, the
+    choices allowed (`keep`, `absorb`, and `both` for free text), a
+    suggestion and why;
+  - **effects**: references to rewrite per kind, links that would point from
+    a record to itself, records that would list one person twice, families
+    that would describe the same couple;
+  - **refusals**, each with a stable `reason`;
+  - a **fingerprint** of the two records and of every record that refers to
+    either, in canonical form.
+- **`merge_entities(flat, kind, keep_id, absorb_id, resolutions)`.** It
+  applies a plan, with `{"fingerprint", "choices", "confirm"}` as decided by
+  the caller. It returns the bundle and a report that carries **the absorbed
+  record verbatim**.
+- **Where AXGF has room for the value not chosen, it is kept:**
+  - a display name joins `identity.names` as an `alias`;
+  - a birth or a death becomes an event of that category, with the kept
+    person as its `subject` and its own date, place, source and confidence;
+  - when both values cite a source, the chosen source gains a `conflicts`
+    entry (`resolution: "this_preferred"`);
+  - free text may keep both.
+- **Suggestions fail on the safe side:**
+  - the more restrictive visibility;
+  - *living*;
+  - both texts;
+  - for a birth or a death, the better attested value: the higher
+    confidence, then the one that cites a source.
+- **Refused, because the result would be impossible:**
+  - an ancestor and a descendant;
+  - in one family, a spouse and a child;
+  - the two spouses of a union;
+  - two families whose couples together hold more than two spouses (unless
+    polygamous);
+  - a child of one family who is a spouse in the other.
+- **Two children of the same parents are refused unless the absorbed
+  person's name is typed back as `confirm`.** In the registers of the 18th
+  and 19th centuries a child who died was often followed by one given the
+  same name.
+- **References, and the duplicates they create.** Every reference to the
+  absorbed record is rewritten in all eight kinds. Then the duplicates this
+  creates are tidied and reported:
+  - a family that lists the person twice keeps one entry;
+  - an event that names them twice keeps the surer participant;
+  - a link from the person to themselves is removed;
+  - a source's conflict with itself is dropped.
+- **New diagnostic codes:** `MERGE_REFUSED`, `MERGE_UNRESOLVED`,
+  `MERGE_UNSUPPORTED` (events, links, occupations and documents are not
+  merged) and `STALE_PLAN` (a record changed since the plan). Each refusal
+  changes nothing.
+- **`axgf merge <kind> <PATH> --keep … --absorb …`.** It prints the plan and
+  writes nothing; with `--resolutions FILE` it merges.
+- `planMerge` and `mergeEntities` in the WebAssembly adapter.
+
+### Fixed
+
+- **`deduplicate` now rewrites `derived_from`.** A name component's
+  `derived_from` names the person a patronymic or matronymic comes from, so
+  it is a reference, but its key does not end in `_id`. Merging a father
+  left his children's patronymics pointing at a record that was gone.
+  Checked against the 1.1 schema: of its 53 UUID-valued fields, 51 are
+  `*_id` references, one is a record's own `id`, and `derived_from` is the
+  last. `merge_entities` rewrites it too.
+
 ## [0.5.0] — 2026-10-07
 
 `deduplicate()` merges a couple entered twice when one record leaves the kind

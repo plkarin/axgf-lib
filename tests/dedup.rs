@@ -408,3 +408,28 @@ fn deduplicate_rejects_unsupported_spec_version() {
     assert_eq!(env.status, Status::Error);
     assert_eq!(env.diagnostics[0].code.as_str(), "UNSUPPORTED_SPEC_VERSION");
 }
+
+#[test]
+fn a_patronymic_follows_its_father_into_the_merged_record() {
+    // `derived_from` is a reference although not named `*_id`: a merge that
+    // missed it left the son's patronymic pointing at a record that is gone.
+    let mut b = create_bundle(None).data;
+    let f1 = "550e8400-e29b-41d4-a716-446655440001";
+    let f2 = "550e8400-e29b-41d4-a716-446655440002";
+    let son = "550e8400-e29b-41d4-a716-446655440003";
+    let mut s = person(son, "Piotr Janowicz", None, None);
+    s["identity"]["name"]["components"] = json!([
+        {"type": "patronymic", "value": "Janowicz", "order": 1, "derived_from": f2, "derivation_type": "patronymic"}
+    ]);
+    b["persons"] = json!({
+        f1: person(f1, "Jan Kowal", Some("1801"), Some("1870")),
+        f2: person(f2, "Jan Kowal", Some("1801"), Some("1870")),
+        son: s,
+    });
+    let env = deduplicate(&to_str(&b));
+    assert_eq!(env.data["merged_persons"], 1);
+    assert_eq!(
+        env.data["bundle"]["persons"][son]["identity"]["name"]["components"][0]["derived_from"],
+        f1
+    );
+}

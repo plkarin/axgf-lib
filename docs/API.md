@@ -96,6 +96,7 @@ an archive with the media missing. See
 - [CRUD](#crud) - `add_entity`, `update_entity`, `delete_entity`
 - [The 1.1 person profile](#the-11-person-profile) - claims, versions, vocabularies, the registry
 - [Cleanup](#cleanup) - `deduplicate`
+- [Merging](#merging) - `plan_merge`, `merge_entities`
 - [Conversion](#conversion) - `convert_gedcom`
 - [Worked scenarios](#worked-scenarios) - multi-call recipes
 - [Diagnostic codes](#diagnostic-codes-stable-public-contract)
@@ -1577,6 +1578,123 @@ let report = validate(&flat).data;
 
 ---
 
+## Merging
+
+`deduplicate` merges exact matches on its own. These two merge what a
+*person* says is one: the grandmother entered twice, the couple recorded
+twice, the village spelt two ways, the register cited twice. Kinds: person,
+family, place, source.
+
+### `plan_merge(flat, kind, keep_id, absorb_id) -> Envelope`
+
+Changes nothing. **data on success**:
+
+```json
+{
+  "kind": "person",
+  "keep_id": "…", "absorb_id": "…",
+  "fingerprint": "9f1c…",
+  "agreements": [ { "field": "death", "from": "absorb" },
+                  { "field": "identity.names", "from": "joined" } ],
+  "conflicts": [
+    { "field": "birth",
+      "keep":   { "date": { "value": "1834-03-02" }, "source_id": "…", "confidence": 0.9 },
+      "absorb": { "date": { "value": "1835" }, "source_id": "…", "confidence": 0.6 },
+      "choices": ["keep", "absorb"], "suggestion": "keep", "because": "higher_confidence",
+      "not_chosen_becomes": "event" },
+    { "field": "identity.visibility", "keep": "members", "absorb": "private",
+      "choices": ["keep", "absorb"], "suggestion": "absorb", "because": "more_restrictive" },
+    { "field": "notes", "keep": "Baptised at Wąwolnica.", "absorb": "Buried at Kazimierz.",
+      "choices": ["keep", "absorb", "both"], "suggestion": "both", "because": "both_kept" }
+  ],
+  "effects": { "references": { "families": 2, "events": 1 },
+               "self_links_removed": [], "listed_twice": [],
+               "same_couple_families": [] },
+  "refusals": [],
+  "mergeable": true
+}
+```
+
+- **`from`** is `keep`, `absorb` or `both` (held alike), `joined` (a list)
+  or `combined` (two objects that do not contradict each other).
+- **`because`** is `higher_confidence`, `sourced`, `kept_record`,
+  `more_restrictive`, `protective` (living) or `both_kept`.
+- **`not_chosen_becomes`** is `alias` (a display name) or `event` (a birth or
+  a death).
+- **`refusals[].reason`** is `ancestor`, `spouse_and_child`, `spouses`,
+  `siblings`, `different_couples`, `child_is_spouse` or `same_record`. Only
+  `siblings` carries a `confirm` phrase, the absorbed person's display name;
+  the others cannot be lifted.
+
+### `merge_entities(flat, kind, keep_id, absorb_id, resolutions) -> Envelope`
+
+`resolutions` is `{"fingerprint": "<the plan's>", "choices": {"<field>":
+"keep" | "absorb" | "both"}, "confirm": "<phrase>"}`. **data on success**:
+`{ "bundle": <flat>, "report": {…} }`. The report:
+
+- `kept_id`, `absorbed_id`, and `absorbed_record`, verbatim;
+- `resolutions`, each choice applied;
+- `references_rewritten`, per kind;
+- `events_created`, for a birth or a death not chosen;
+- `source_conflicts_added`;
+- `links_removed`;
+- `entries_tidied`;
+- `same_couple_families`.
+
+Refusals change nothing: `STALE_PLAN`, `MERGE_REFUSED` (one diagnostic per
+refusal), `MERGE_UNRESOLVED` (one per conflict without a choice it allows).
+Schema findings on the merged record are warnings, as for `add_entity`.
+
+#### Demo A - the grandmother entered twice
+
+*Reproduces: one record from a baptism, one from a burial. The reader
+accepts every suggestion: the baptism's birth stays and the burial's becomes
+an event, the stricter visibility wins, both notes are kept.*
+
+```rust
+use axgf_rs::{merge_entities, plan_merge, EntityKind};
+use serde_json::json;
+
+let plan = plan_merge(&flat, EntityKind::Person, &keep, &absorb).data;
+let mut choices = serde_json::Map::new();
+for c in plan["conflicts"].as_array().unwrap() {
+    choices.insert(c["field"].as_str().unwrap().into(), c["suggestion"].clone());
+}
+let decided = json!({ "fingerprint": plan["fingerprint"], "choices": choices }).to_string();
+let merged = merge_entities(&flat, EntityKind::Person, &keep, &absorb, &decided).data;
+let flat = merged["bundle"].to_string();
+// Keep the absorbed record beside the archive: nothing is lost.
+journal.write(&merged["report"]["absorbed_record"]);
+```
+
+#### Demo B - two children with one name
+
+*Reproduces: Stanisław, born 1851, died 1852; Stanisław, born 1853. The plan
+refuses, and says how a person who knows better lifts it.*
+
+```json
+{ "refusals": [ { "reason": "siblings",
+                  "message": "… are recorded as children of the same parents …",
+                  "confirm": "Stanisław Lis" } ],
+  "mergeable": true }
+```
+
+`merge_entities` refuses with `MERGE_REFUSED` until `"confirm":
+"Stanisław Lis"` is sent, typed exactly.
+
+#### Demo C - someone edited the record in between
+
+*Reproduces: the plan is on screen, and another editor corrects the
+grandmother's notes before the merge is confirmed.*
+
+```json
+{ "status": "error", "data": null,
+  "diagnostics": [ { "code": "STALE_PLAN", "severity": "error",
+                     "message": "the plan's fingerprint … does not match the bundle's …: one of the records changed since the plan was made — plan again" } ] }
+```
+
+---
+
 ## Conversion
 
 ### `convert_gedcom(bytes, default_confidence, place_lang) -> Envelope`
@@ -1895,6 +2013,10 @@ diagnostics, so no error-mapping layer is needed.
 | `UNKNOWN_ENTITY_KIND` | Adapters |
 | `DELETE_BLOCKED_BY_REFERENCE` | CRUD (delete under `Reject`) |
 | `MANUAL_REVIEW_REQUIRED` | Deduplicate |
+| `MERGE_REFUSED` | `merge_entities` (a refusal holds) |
+| `MERGE_UNRESOLVED` | `merge_entities` (a conflict without a choice it allows); info for a choice on a field that is not a conflict |
+| `MERGE_UNSUPPORTED` | `plan_merge`, `merge_entities` (events, links, occupations, documents) |
+| `STALE_PLAN` | `merge_entities` (a record changed since the plan) |
 | `ZIP_READ_ERROR` | Import |
 | `ZIP_WRITE_ERROR` | Export |
 | `PAYLOADS_EXTERNAL` | `export_bundle` (refusal); streaming import (info) |

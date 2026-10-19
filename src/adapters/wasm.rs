@@ -112,6 +112,33 @@ pub fn deduplicate_wasm(flat_json: &str) -> String {
     crate::deduplicate(flat_json).to_json()
 }
 
+/// See [`crate::plan_merge`]. `kind` as for [`add_entity_wasm`]. Returns a
+/// JSON-serialized envelope.
+#[wasm_bindgen(js_name = planMerge)]
+pub fn plan_merge_wasm(flat_json: &str, kind: &str, keep_id: &str, absorb_id: &str) -> String {
+    match parse_kind(kind) {
+        Ok(k) => crate::plan_merge(flat_json, k, keep_id, absorb_id).to_json(),
+        Err(e) => e.as_string().unwrap_or_default(),
+    }
+}
+
+/// See [`crate::merge_entities`]. Returns a JSON-serialized envelope.
+#[wasm_bindgen(js_name = mergeEntities)]
+pub fn merge_entities_wasm(
+    flat_json: &str,
+    kind: &str,
+    keep_id: &str,
+    absorb_id: &str,
+    resolutions_json: &str,
+) -> String {
+    match parse_kind(kind) {
+        Ok(k) => {
+            crate::merge_entities(flat_json, k, keep_id, absorb_id, resolutions_json).to_json()
+        }
+        Err(e) => e.as_string().unwrap_or_default(),
+    }
+}
+
 /// See [`crate::convert_gedcom`]. Returns a JSON-serialized envelope.
 #[cfg(feature = "gedcom")]
 #[wasm_bindgen(js_name = convertGedcom)]
