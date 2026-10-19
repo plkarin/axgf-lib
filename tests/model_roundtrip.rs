@@ -77,8 +77,8 @@ fn full_manifest_from_spec_section_3_parses() {
         "updated_at": "2026-06-15T14:30:00Z",
         "generator": {"name": "ax-genealogy", "version": "1.0.0", "url": "https://ax-genealogy.example.com"},
         "family": {
-            "name": "Famille Pierre-Léonard",
-            "description": "Lignée Pierre-Léonard — La Réunion → France métropolitaine",
+            "name": "Famille Lefèvre-Morin",
+            "description": "Lignée Lefèvre-Morin — La Réunion → France métropolitaine",
             "primary_culture": "fr",
             "primary_place": "La Réunion, France",
             "time_span": {"earliest": "1850", "latest": "2026"}
@@ -119,10 +119,10 @@ fn minimal_person_from_spec_13_1_parses() {
         "version_num": 1,
         "identity": {
             "name": {
-                "display": "Jean Pierre-Léonard",
+                "display": "Jean Lefèvre-Morin",
                 "components": [
                     {"type": "given_name", "value": "Jean", "order": 1},
-                    {"type": "family_name", "value": "Pierre-Léonard", "order": 2}
+                    {"type": "family_name", "value": "Lefèvre-Morin", "order": 2}
                 ]
             },
             "gender": {"value": "M"},
@@ -133,9 +133,9 @@ fn minimal_person_from_spec_13_1_parses() {
     let p: Person = parse(&input);
     assert_eq!(p.base.id, "550e8400-e29b-41d4-a716-446655440001");
     assert_eq!(p.base.kind, "person");
-    assert_eq!(p.identity.name.display, "Jean Pierre-Léonard");
+    assert_eq!(p.identity.name.display, "Jean Lefèvre-Morin");
     assert_eq!(p.identity.name.components.len(), 2);
-    assert_eq!(p.identity.name.components[1].value, "Pierre-Léonard");
+    assert_eq!(p.identity.name.components[1].value, "Lefèvre-Morin");
     assert_eq!(p.identity.gender.value, "M");
     assert!(!p.identity.is_living);
     assert_eq!(p.identity.visibility.as_deref(), Some("members"));
@@ -155,22 +155,22 @@ fn rich_person_from_spec_4_1_parses_all_blocks() {
         "created_by": "admin@ax-genealogy.local",
         "identity": {
             "name": {
-                "display": "Jean Pierre-Léonard",
+                "display": "Jean Lefèvre-Morin",
                 "culture": "fr", "direction": "ltr", "display_order": "given_first",
                 "components": [
                     {"type": "given_name", "value": "Jean", "value_latin": "Jean", "order": 1},
-                    {"type": "family_name", "value": "Pierre-Léonard", "value_latin": "Pierre-Leonard", "order": 2}
+                    {"type": "family_name", "value": "Lefèvre-Morin", "value_latin": "Lefevre-Morin", "order": 2}
                 ]
             },
-            "names": [{"type": "birth", "display": "Jean-Baptiste Pierre-Léonard",
+            "names": [{"type": "birth", "display": "Jean-Baptiste Lefèvre-Morin",
                        "components": [{"type": "given_name", "value": "Jean-Baptiste", "order": 1}],
                        "source_id": "550e8400-e29b-41d4-a716-446655440002",
-                       "confidence": 0.95, "valid_from": "1923-04-12"}],
+                       "confidence": 0.95, "valid_from": "1924-04-17"}],
             "gender": {"value": "M", "note": "Valeurs: M, F, NB, U"},
             "is_living": false, "visibility": "members"
         },
         "birth": {
-            "date": {"value": "1923-04-12", "calendar": "gregorian",
+            "date": {"value": "1924-04-17", "calendar": "gregorian",
                      "precision": "exact", "circa": false, "confidence": 0.98},
             "place_id": "550e8400-e29b-41d4-a716-446655440003",
             "confidence": 0.98
@@ -203,7 +203,7 @@ fn rich_person_from_spec_4_1_parses_all_blocks() {
     let birth = p.birth.as_ref().unwrap();
     assert_eq!(
         birth.date.as_ref().unwrap().value.as_deref(),
-        Some("1923-04-12")
+        Some("1924-04-17")
     );
     assert_eq!(birth.date.as_ref().unwrap().confidence, Some(0.98));
     assert_eq!(birth.confidence, Some(0.98));
@@ -234,8 +234,8 @@ fn family_from_spec_4_2_parses() {
         "type": "family",
         "axgf_version": "1.0",
         "created_at": "2026-05-01T10:00:00Z",
-        "name": "Famille Pierre-Léonard — Branche Jean",
-        "description": "Union de Jean Pierre-Léonard et Élise Bernard, Paris 1948",
+        "name": "Famille Lefèvre-Morin — Branche Jean",
+        "description": "Union de Jean Lefèvre-Morin et Odile Ferrand, Paris 1948",
         "union": {
             "type": "marriage",
             "status": "ended_by_death",
@@ -413,7 +413,7 @@ fn occupation_from_spec_4_5_parses() {
         "title": "Instituteur",
         "title_latin": "Primary school teacher",
         "title_normalized": "teacher",
-        "employer": {"name": "École publique de Saint-Denis",
+        "employer": {"name": "École publique de Saint-Paul",
                      "place_id": "aaaa1234-e29b-41d4-a716-446655440099"},
         "place_id": "aaaa1234-e29b-41d4-a716-446655440099",
         "valid_from": {"date": {"value": "1948", "precision": "year"}},
@@ -426,7 +426,7 @@ fn occupation_from_spec_4_5_parses() {
     assert_eq!(o.title_normalized.as_deref(), Some("teacher"));
     assert_eq!(
         o.employer.as_ref().unwrap().name.as_deref(),
-        Some("École publique de Saint-Denis")
+        Some("École publique de Saint-Paul")
     );
     assert_eq!(
         o.valid_from
@@ -450,17 +450,17 @@ fn source_from_spec_5_4_parses() {
         "id": "eeee1234-e29b-41d4-a716-446655440001",
         "type": "source",
         "axgf_version": "1.0",
-        "title": "Acte de naissance n°47 — Jean Pierre-Léonard",
+        "title": "Acte de naissance n°52 — Jean Lefèvre-Morin",
         "source_type": "birth_certificate",
         "reliability": "primary",
         "confidence": 0.98,
         "status": "verified",
-        "repository": {"name": "Archives départementales", "location": "Saint-Denis",
-                       "url": "https://archives.reunion.fr", "reference": "5MI/47/1923/0047"},
-        "date": {"value": "1923-04-12", "precision": "exact"},
+        "repository": {"name": "Archives départementales", "location": "Saint-Paul",
+                       "url": "https://archives.reunion.fr", "reference": "3E/52/1924/0052"},
+        "date": {"value": "1924-04-17", "precision": "exact"},
         "conflicts": [{"source_id": "eeee1234-e29b-41d4-a716-446655440002",
-                       "field": "birthdate", "this_value": "1923-04-12",
-                       "conflict_value": "1923-04-15", "resolution": "this_preferred",
+                       "field": "birthdate", "this_value": "1924-04-17",
+                       "conflict_value": "1924-04-20", "resolution": "this_preferred",
                        "resolution_note": "Original preferred over family Bible"}],
         "transcription": "Le douze avril mil neuf cent vingt-trois...",
         "language": "fr", "script": "latin"
@@ -470,7 +470,7 @@ fn source_from_spec_5_4_parses() {
     assert_eq!(s.reliability, "primary");
     assert_eq!(
         s.repository.as_ref().unwrap().reference.as_deref(),
-        Some("5MI/47/1923/0047")
+        Some("3E/52/1924/0052")
     );
     assert_eq!(s.conflicts.len(), 1);
     assert_eq!(s.conflicts[0].field, "birthdate");
@@ -515,8 +515,8 @@ fn place_from_spec_5_3_parses() {
         "type": "place",
         "axgf_version": "1.0",
         "names": [
-            {"lang": "fr", "value": "Saint-Denis", "is_primary": true},
-            {"lang": "en", "value": "Saint-Denis, Réunion", "is_primary": false}
+            {"lang": "fr", "value": "Saint-Paul", "is_primary": true},
+            {"lang": "en", "value": "Saint-Paul, Réunion", "is_primary": false}
         ],
         "place_type": "city",
         "region": "La Réunion",
@@ -547,13 +547,13 @@ fn document_from_spec_5_5_parses() {
         "id": "ffff1234-e29b-41d4-a716-446655440001",
         "type": "document",
         "axgf_version": "1.0",
-        "filename": "acte-naissance-jean-1923.pdf",
+        "filename": "acte-naissance-jean-1924.pdf",
         "mime_type": "application/pdf",
         "document_type": "birth_certificate",
         "status": "present",
         "file": {"path": "documents/files/doc-001.pdf", "size_bytes": 1048576,
                  "sha256": "a3f8c2d1e4b5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1"},
-        "date": {"value": "1923-04-12", "precision": "exact"},
+        "date": {"value": "1924-04-17", "precision": "exact"},
         "language": "fr",
         "linked_to": [
             {"entity_type": "person", "entity_id": "550e8400-e29b-41d4-a716-446655440001", "role": "subject"},
@@ -564,10 +564,10 @@ fn document_from_spec_5_5_parses() {
                "suggested_links": [{"entity_type": "person",
                                     "entity_id": "550e8400-e29b-41d4-a716-446655440001",
                                     "confidence": 0.97, "reason": "Name match"}]},
-        "caption": "Acte de naissance — 1923"
+        "caption": "Acte de naissance — 1924"
     });
     let d: Document = parse(&input);
-    assert_eq!(d.filename, "acte-naissance-jean-1923.pdf");
+    assert_eq!(d.filename, "acte-naissance-jean-1924.pdf");
     assert_eq!(d.status, "present");
     assert_eq!(d.file.as_ref().unwrap().size_bytes, Some(1_048_576));
     assert_eq!(d.linked_to.len(), 2);
@@ -603,7 +603,7 @@ fn unknown_fields_at_every_level_survive_person_round_trip() {
             "future_identity_field": [1, 2, 3]
         },
         "birth": {
-            "date": {"value": "1923-04-12", "future_date_field": "keep"},
+            "date": {"value": "1924-04-17", "future_date_field": "keep"},
             "future_birth_field": "keep"
         }
     });
@@ -655,7 +655,7 @@ fn unknown_fields_on_family_and_event_survive() {
         "type": "event",
         "axgf_version": "1.0",
         "category": "birth",
-        "date": {"value": "1923-04-12", "future_date_field": "keep"},
+        "date": {"value": "1924-04-17", "future_date_field": "keep"},
         "future_event_field": "keep",
         "participants": [{"entity_type": "person",
                           "entity_id": "550e8400-e29b-41d4-a716-446655440001",

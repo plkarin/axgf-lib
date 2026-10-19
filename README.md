@@ -252,7 +252,7 @@ use axgf_rs::{
 fn main() {
     // 1. Start an empty bundle. Every call takes JSON in and hands back an
     //    envelope whose `data` is JSON out.
-    let created = create_bundle(Some("Famille Pierre-Léonard"));
+    let created = create_bundle(Some("Famille Lefèvre-Morin"));
     assert_eq!(created.status, Status::Ok);
     let mut flat = created.data.to_string();
 
@@ -260,7 +260,7 @@ fn main() {
     //    the updated bundle comes back under `data["bundle"]`.
     let person = r#"{
       "identity": {
-        "name": {"display": "Jean Pierre-Léonard", "components": []},
+        "name": {"display": "Jean Lefèvre-Morin", "components": []},
         "gender": {"value": "M"},
         "is_living": false
       }

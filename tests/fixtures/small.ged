@@ -4,17 +4,17 @@
 2 VERS 5.5.1
 1 CHAR UTF-8
 0 @I1@ INDI
-1 NAME Jean /Pierre-Léonard/
-1 NAME Jean-Baptiste /Pierre-Léonard/
+1 NAME Jean /Lefèvre-Morin/
+1 NAME Jean-Baptiste /Lefèvre-Morin/
 1 SEX M
 1 BIRT
-2 DATE 12 KWIETNIA 1923
-2 PLAC Saint-Denis, La Réunion
+2 DATE 17 KWIETNIA 1924
+2 PLAC Saint-Paul, La Réunion
 1 DEAT
 2 DATE PRZED 1990
 1 OCCU Instituteur
 2 DATE 1948
-2 PLAC Saint-Denis, La Réunion
+2 PLAC Saint-Paul, La Réunion
 1 NOTE @N1@
 1 NOTE Note inline about Jean.
 1 OBJE
@@ -22,14 +22,14 @@
 3 FORM jpg
 3 TITL Family photo (webtrees nesting)
 0 @I2@ INDI
-1 NAME Marie /Bernard/
+1 NAME Marie /Ferrand/
 1 SEX F
 1 BIRT
 2 DATE OK 1925
 1 DEAT
 2 DATE PO 2000 R
 0 @I3@ INDI
-1 NAME Paul /Pierre-Léonard/
+1 NAME Paul /Lefèvre-Morin/
 1 SEX M
 1 BIRT
 2 DATE bogus-date-value

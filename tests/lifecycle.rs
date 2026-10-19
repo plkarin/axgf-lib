@@ -78,11 +78,11 @@ fn create_bundle_returns_valid_empty_bundle() {
 
 #[test]
 fn create_bundle_with_family_name_populates_manifest() {
-    let env = create_bundle(Some("Famille Pierre-Léonard"));
+    let env = create_bundle(Some("Famille Lefèvre-Morin"));
     assert_eq!(env.status, Status::Ok);
     assert_eq!(
         env.data["manifest"]["family"]["name"],
-        "Famille Pierre-Léonard"
+        "Famille Lefèvre-Morin"
     );
 }
 

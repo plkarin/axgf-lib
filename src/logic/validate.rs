@@ -44,7 +44,7 @@
 //!   both parent and child have a birth date parseable to a year, the
 //!   child MUST NOT be born earlier than the parent. Comparison uses
 //!   only the leading four-digit year, so partial dates like `1923`
-//!   and `1923-04-12` work uniformly.
+//!   and `1924-04-17` work uniformly.
 //! - **Duplicate spouse sets** (`DUPLICATE_UNIQUE_REF`, warning) — two
 //!   different `Family` records whose `union.persons` reference the
 //!   same set of persons are almost certainly duplicates and should

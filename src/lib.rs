@@ -58,7 +58,7 @@
 //! //    is `{ "id": <uuid>, "bundle": <updated flat bundle> }`.
 //! let person = r#"{
 //!     "identity": {
-//!         "name":   {"display": "Jean Pierre-Léonard", "components": []},
+//!         "name":   {"display": "Jean Lefèvre-Morin", "components": []},
 //!         "gender": {"value": "M"},
 //!         "is_living": true
 //!     }

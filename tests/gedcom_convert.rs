@@ -51,7 +51,7 @@ fn converts_fixture_into_expected_entity_counts() {
     // 1 SOUR + 1 OBJE @M1@ + 1 inline OBJE under I1 → 2 documents.
     assert_eq!(b["documents"].as_object().unwrap().len(), 2);
     assert_eq!(b["sources"].as_object().unwrap().len(), 1);
-    // Place dedup: "Saint-Denis, La Réunion" appears twice, "Paris" once → 2 places.
+    // Place dedup: "Saint-Paul, La Réunion" appears twice, "Paris" once → 2 places.
     assert_eq!(b["places"].as_object().unwrap().len(), 2);
     // Stats mirror the counts.
     let s = &b["manifest"]["stats"];
@@ -75,7 +75,7 @@ fn polish_qualifiers_map_to_range_and_circa() {
         .as_object()
         .unwrap()
         .values()
-        .find(|p| p["identity"]["name"]["display"] == "Marie Bernard")
+        .find(|p| p["identity"]["name"]["display"] == "Marie Ferrand")
         .expect("Marie present");
     let birth = &marie["birth"]["date"];
     assert_eq!(birth["value"], "1925");
@@ -97,7 +97,7 @@ fn polish_qualifiers_map_to_range_and_circa() {
         .as_object()
         .unwrap()
         .values()
-        .find(|p| p["identity"]["name"]["display"] == "Jean Pierre-Léonard")
+        .find(|p| p["identity"]["name"]["display"] == "Jean Lefèvre-Morin")
         .expect("Jean present");
     let jd = &jean["death"]["date"];
     assert_eq!(jd["precision"], "unknown");
@@ -117,7 +117,7 @@ fn unparseable_date_is_preserved_as_note_never_dropped() {
         .as_object()
         .unwrap()
         .values()
-        .find(|p| p["identity"]["name"]["display"] == "Paul Pierre-Léonard")
+        .find(|p| p["identity"]["name"]["display"] == "Paul Lefèvre-Morin")
         .expect("Paul present");
     let bd = &paul["birth"]["date"];
     assert_eq!(bd["precision"], "unknown");
@@ -135,14 +135,14 @@ fn unparseable_date_is_preserved_as_note_never_dropped() {
 fn french_month_names_parse() {
     let env = convert();
     let b = bundle(&env);
-    // Jean birth "12 KWIETNIA 1923" — Polish month April → 1923-04-12.
+    // Jean birth "17 KWIETNIA 1924" — Polish month April → 1924-04-17.
     let jean = b["persons"]
         .as_object()
         .unwrap()
         .values()
-        .find(|p| p["identity"]["name"]["display"] == "Jean Pierre-Léonard")
+        .find(|p| p["identity"]["name"]["display"] == "Jean Lefèvre-Morin")
         .unwrap();
-    assert_eq!(jean["birth"]["date"]["value"], "1923-04-12");
+    assert_eq!(jean["birth"]["date"]["value"], "1924-04-17");
     assert_eq!(jean["birth"]["date"]["precision"], "exact");
     // Marriage "15 JUIN 1948" — French June → 1948-06-15.
     let evt = b["events"].as_object().unwrap().values().next().unwrap();
@@ -182,11 +182,11 @@ fn multiple_name_entries_become_alias_names() {
         .as_object()
         .unwrap()
         .values()
-        .find(|p| p["identity"]["name"]["display"] == "Jean Pierre-Léonard")
+        .find(|p| p["identity"]["name"]["display"] == "Jean Lefèvre-Morin")
         .unwrap();
     let names = jean["identity"]["names"].as_array().unwrap();
     assert_eq!(names.len(), 1);
-    assert_eq!(names[0]["display"], "Jean-Baptiste Pierre-Léonard");
+    assert_eq!(names[0]["display"], "Jean-Baptiste Lefèvre-Morin");
     assert_eq!(names[0]["type"], "alias");
 }
 
@@ -203,10 +203,10 @@ fn occu_becomes_standalone_occupation_linked_to_person() {
         .next()
         .unwrap();
     assert_eq!(occ["title"], "Instituteur");
-    // person_id points to the person whose display is "Jean Pierre-Léonard".
+    // person_id points to the person whose display is "Jean Lefèvre-Morin".
     let pid = occ["person_id"].as_str().unwrap();
     let owner = &b["persons"][pid];
-    assert_eq!(owner["identity"]["name"]["display"], "Jean Pierre-Léonard");
+    assert_eq!(owner["identity"]["name"]["display"], "Jean Lefèvre-Morin");
     // valid_from date 1948 parses to a year.
     assert_eq!(occ["valid_from"]["date"]["value"], "1948");
 }
@@ -218,7 +218,7 @@ fn note_xref_ref_resolves_into_person_notes() {
         .as_object()
         .unwrap()
         .values()
-        .find(|p| p["identity"]["name"]["display"] == "Jean Pierre-Léonard")
+        .find(|p| p["identity"]["name"]["display"] == "Jean Lefèvre-Morin")
         .unwrap();
     let notes = jean["notes"].as_str().unwrap();
     assert!(

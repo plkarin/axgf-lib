@@ -418,7 +418,7 @@ fn pick_child_value<'a>(r: &'a Record, tag: &str) -> Option<&'a Record> {
     r.children.iter().find(|c| c.tag == tag)
 }
 
-/// Turn a GEDCOM NAME value like `Jean /Pierre-Léonard/` into a
+/// Turn a GEDCOM NAME value like `Jean /Lefèvre-Morin/` into a
 /// display string with slashes stripped.
 fn gedcom_name_display(raw: &str) -> String {
     raw.replace('/', "")

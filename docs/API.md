@@ -123,7 +123,7 @@ receive entities.*
 ```rust
 use axgf_rs::create_bundle;
 
-let env = create_bundle(Some("Pierre-Leonard Family"));
+let env = create_bundle(Some("Lefevre-Morin Family"));
 println!("{}", env.to_json());
 ```
 
@@ -137,7 +137,7 @@ println!("{}", env.to_json());
       "updated_at": "2026-08-01T21:02:20Z",
       "stats": { "persons": 0, "families": 0, "events": 0, "links": 0,
                  "occupations": 0, "sources": 0, "places": 0, "documents": 0 },
-      "family": { "name": "Pierre-Leonard Family" }
+      "family": { "name": "Lefevre-Morin Family" }
     },
     "persons": {}, "families": {}, "events": {}, "links": {},
     "occupations": {}, "sources": {}, "places": {}, "documents": {}
@@ -200,7 +200,7 @@ their original in-archive path.*
     "documents": {
       "d1f0...": {
         "type": "document",
-        "filename": "birth-cert-1923.pdf",
+        "filename": "birth-cert-1924.pdf",
         "mime_type": "application/pdf",
         "document_type": "birth_certificate",
         "status": "present",
@@ -418,7 +418,7 @@ println!("{} people, {} bytes of media still on disk",
   "data": {
     "manifest": { "axgf": "1.0", "stats": { "documents": 2, ... } },
     "documents": {
-      "d1f0...": { "type": "document", "filename": "birth-cert-1923.pdf",
+      "d1f0...": { "type": "document", "filename": "birth-cert-1924.pdf",
                    "status": "present",
                    "file": { "path": "documents/files/d1f0....pdf",
                              "size_bytes": 184320, "sha256": "a3f8..." } }
@@ -764,15 +764,15 @@ use serde_json::json;
 
 let person = json!({
   "identity": {
-    "name": { "display": "Jean Pierre-Leonard", "components": [
+    "name": { "display": "Jean Lefevre-Morin", "components": [
       { "type": "given_name",  "value": "Jean",           "order": 1 },
-      { "type": "family_name", "value": "Pierre-Leonard", "order": 2 }
+      { "type": "family_name", "value": "Lefevre-Morin", "order": 2 }
     ]},
     "gender": { "value": "M" },
     "is_living": false,
     "visibility": "members"
   },
-  "birth": { "date": { "value": "1923-04-12", "calendar": "gregorian",
+  "birth": { "date": { "value": "1924-04-17", "calendar": "gregorian",
                        "precision": "exact", "circa": false, "confidence": 0.98 } }
 });
 
@@ -789,7 +789,7 @@ system so re-running the import is idempotent.*
 ```rust
 let person = json!({
   "id": "550e8400-e29b-41d4-a716-446655440001",
-  "identity": { "name": { "display": "Elise Bernard", "components": [] },
+  "identity": { "name": { "display": "Odile Ferrand", "components": [] },
                 "gender": { "value": "F" },
                 "is_living": false, "visibility": "members" }
 });
@@ -879,7 +879,7 @@ let occ = json!({
   "person_id": jean_id,
   "title": "Schoolteacher",
   "title_latin": "Primary school teacher",
-  "employer": { "name": "Public school of Saint-Denis", "place_id": st_denis_id },
+  "employer": { "name": "Public school of Saint-Paul", "place_id": st_paul_id },
   "valid_from":  { "date": { "value": "1948", "precision": "year" } },
   "valid_until": { "date": { "value": "1978", "precision": "year" } },
   "confidence": 0.90,
@@ -891,14 +891,14 @@ let flat = add_entity(&flat, EntityKind::Occupation, &occ.to_string())
 
 #### Demo G - a place reused by many entities
 
-*Reproduces: entering Saint-Denis once and referencing it from births,
+*Reproduces: entering Saint-Paul once and referencing it from births,
 deaths, marriages and occupations. Note `country_history` - the same
 coordinates can belong to different states over time.*
 
 ```rust
 let place = json!({
-  "names": [ { "lang": "fr", "value": "Saint-Denis", "is_primary": true },
-             { "lang": "en", "value": "Saint-Denis, Reunion" } ],
+  "names": [ { "lang": "fr", "value": "Saint-Paul", "is_primary": true },
+             { "lang": "en", "value": "Saint-Paul, Reunion" } ],
   "place_type": "city",
   "country_current": "FR",
   "coordinates": { "lat": -20.8823, "lon": 55.4504, "precision": "city_center" },
@@ -918,20 +918,20 @@ Document carries the bytes.*
 
 ```rust
 let source = json!({
-  "title": "Birth certificate no.47 - Jean Pierre-Leonard 1923",
+  "title": "Birth certificate no.52 - Jean Lefevre-Morin 1924",
   "source_type": "birth_certificate",
   "reliability": "primary",
   "confidence": 0.98,
   "status": "verified",
   "repository": { "name": "Departmental Archives of Reunion",
-                  "reference": "5MI/47/1923/0047" }
+                  "reference": "3E/52/1924/0052" }
 });
 let d      = add_entity(&flat, EntityKind::Source, &source.to_string()).data;
 let src_id = d["id"].as_str().expect("id missing").to_string();
 let flat   = d["bundle"].to_string();
 
 let document = json!({
-  "filename": "birth-cert-1923.pdf",
+  "filename": "birth-cert-1924.pdf",
   "mime_type": "application/pdf",
   "document_type": "birth_certificate",
   "status": "present",
@@ -992,13 +992,13 @@ let flat = update_entity(&flat, EntityKind::Person, &jean.to_string())
 
 #### Demo B - correcting a date after finding the certificate
 
-*Reproduces: research progress. The birth was recorded as "circa 1923" from
+*Reproduces: research progress. The birth was recorded as "circa 1924" from
 family memory; the civil register now gives an exact date, so precision and
 confidence both rise.*
 
 ```rust
 jean["birth"]["date"] = json!({
-  "value": "1923-04-12", "calendar": "gregorian",
+  "value": "1924-04-17", "calendar": "gregorian",
   "precision": "exact", "circa": false, "confidence": 0.98
 });
 jean["birth"]["source_id"] = json!(birth_cert_source_id);
@@ -1855,7 +1855,7 @@ fn push(flat: &str, kind: EntityKind, e: serde_json::Value) -> (String, String) 
 }
 
 // 1. empty archive
-let mut flat = create_bundle(Some("Pierre-Leonard Family")).data.to_string();
+let mut flat = create_bundle(Some("Lefevre-Morin Family")).data.to_string();
 
 // 2. a place both generations will reference
 let (paris, f) = push(&flat, EntityKind::Place, json!({
@@ -1867,16 +1867,16 @@ flat = f;
 
 // 3. generation 1
 let (jean, f) = push(&flat, EntityKind::Person, json!({
-    "identity": { "name": { "display": "Jean Pierre-Leonard", "components": [] },
+    "identity": { "name": { "display": "Jean Lefevre-Morin", "components": [] },
                   "gender": { "value": "M" }, "is_living": false,
                   "visibility": "members" },
-    "birth": { "date": { "value": "1923-04-12", "precision": "exact" },
+    "birth": { "date": { "value": "1924-04-17", "precision": "exact" },
                "place_id": paris }
 }));
 flat = f;
 
 let (elise, f) = push(&flat, EntityKind::Person, json!({
-    "identity": { "name": { "display": "Elise Bernard", "components": [] },
+    "identity": { "name": { "display": "Odile Ferrand", "components": [] },
                   "gender": { "value": "F" }, "is_living": false,
                   "visibility": "members" }
 }));
@@ -1884,7 +1884,7 @@ flat = f;
 
 // 4. generation 2
 let (robert, f) = push(&flat, EntityKind::Person, json!({
-    "identity": { "name": { "display": "Robert Pierre-Leonard", "components": [] },
+    "identity": { "name": { "display": "Robert Lefevre-Morin", "components": [] },
                   "gender": { "value": "M" }, "is_living": true,
                   "visibility": "members" },
     "birth": { "date": { "value": "1949-06", "precision": "month" },

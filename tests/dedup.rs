@@ -297,8 +297,8 @@ fn two_persons_with_identical_name_and_dates_merge_and_refs_rewrite() {
     let b_id = "550e8400-e29b-41d4-a716-446655440002"; // victim
     let evt = "aaaa1234-e29b-41d4-a716-446655440100";
     b["persons"] = json!({
-        a:    person(a,    "Jean Pierre-Léonard", Some("1900"), Some("1970")),
-        b_id: person(b_id, "Jean Pierre-Léonard", Some("1900"), Some("1970")),
+        a:    person(a,    "Jean Lefèvre-Morin", Some("1900"), Some("1970")),
+        b_id: person(b_id, "Jean Lefèvre-Morin", Some("1900"), Some("1970")),
     });
     // Event participant references the victim by entity_id.
     b["events"] = json!({

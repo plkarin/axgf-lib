@@ -57,7 +57,7 @@ fn check(name: &str, condition: bool, reason: &str) {
 // -- test cases ---------------------------------------------------------------
 
 fn test_01_create_bundle() -> String {
-    let env = parse(&create_bundle(Some("Pierre-Leonard Family")).to_json());
+    let env = parse(&create_bundle(Some("Lefevre-Morin Family")).to_json());
     check("T01 create_bundle returns ok", ok(&env), "status != ok");
     let bundle = data(&env).to_string();
     let b: Value = serde_json::from_str(&bundle).unwrap();
@@ -65,7 +65,7 @@ fn test_01_create_bundle() -> String {
         b["manifest"]["axgf"].as_str() == Some("1.0"),
         "manifest.axgf mismatch");
     check("T01 manifest.family.name present",
-        b["manifest"]["family"]["name"].as_str() == Some("Pierre-Leonard Family"),
+        b["manifest"]["family"]["name"].as_str() == Some("Lefevre-Morin Family"),
         "family name missing");
     bundle
 }
@@ -93,10 +93,10 @@ fn test_04_add_person(bundle: &str) -> (String, String) {
         "axgf_version": "1.0",
         "identity": {
             "name": {
-                "display": "Jean Pierre-Leonard",
+                "display": "Jean Lefevre-Morin",
                 "components": [
                     {"type": "given_name",  "value": "Jean",           "order": 1},
-                    {"type": "family_name", "value": "Pierre-Leonard", "order": 2}
+                    {"type": "family_name", "value": "Lefevre-Morin", "order": 2}
                 ]
             },
             "gender": {"value": "M"},
@@ -104,7 +104,7 @@ fn test_04_add_person(bundle: &str) -> (String, String) {
             "visibility": "members"
         },
         "birth": {
-            "date": {"value": "1923-04-12", "calendar": "gregorian",
+            "date": {"value": "1924-04-17", "calendar": "gregorian",
                      "precision": "exact", "circa": false, "confidence": 0.98}
         },
         "death": {
@@ -129,10 +129,10 @@ fn test_05_add_uuid_generated(bundle: &str) -> String {
         "axgf_version": "1.0",
         "identity": {
             "name": {
-                "display": "Elise Bernard",
+                "display": "Odile Ferrand",
                 "components": [
-                    {"type": "given_name",  "value": "Elise",  "order": 1},
-                    {"type": "family_name", "value": "Bernard","order": 2}
+                    {"type": "given_name",  "value": "Odile",  "order": 1},
+                    {"type": "family_name", "value": "Ferrand","order": 2}
                 ]
             },
             "gender": {"value": "F"},
@@ -292,7 +292,7 @@ fn test_10_add_source_and_place(bundle: &str) -> String {
     let place = json!({
         "type": "place",
         "axgf_version": "1.0",
-        "names": [{"lang": "en", "value": "Saint-Denis, Reunion",
+        "names": [{"lang": "en", "value": "Saint-Paul, Reunion",
                    "is_primary": true}],
         "place_type": "city",
         "country_current": "FR",
@@ -309,14 +309,14 @@ fn test_10_add_source_and_place(bundle: &str) -> String {
     let source = json!({
         "type": "source",
         "axgf_version": "1.0",
-        "title": "Birth certificate no.47 - Jean Pierre-Leonard 1923",
+        "title": "Birth certificate no.52 - Jean Lefevre-Morin 1924",
         "source_type": "birth_certificate",
         "reliability": "primary",
         "confidence": 0.98,
         "status": "verified",
         "repository": {
             "name": "Departmental Archives of Reunion",
-            "location": "Saint-Denis, Reunion"
+            "location": "Saint-Paul, Reunion"
         }
     });
     let b_p = data(&env_p).to_string();
@@ -524,12 +524,12 @@ fn test_18_deduplicate() {
 
 fn test_19_gedcom_conversion() {
     let ged = b"0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n\
-0 @I1@ INDI\n1 NAME Jean /Pierre-Leonard/\n2 GIVN Jean\n2 SURN Pierre-Leonard\n\
-1 NAME Jean-Baptiste /Pierre-Leonard/\n\
-1 SEX M\n1 BIRT\n2 DATE 12 APR 1923\n2 PLAC Saint-Denis, Reunion\n\
+0 @I1@ INDI\n1 NAME Jean /Lefevre-Morin/\n2 GIVN Jean\n2 SURN Lefevre-Morin\n\
+1 NAME Jean-Baptiste /Lefevre-Morin/\n\
+1 SEX M\n1 BIRT\n2 DATE 17 APR 1924\n2 PLAC Saint-Paul, Reunion\n\
 1 DEAT\n2 DATE ABT 1987\n1 OCCU Schoolteacher\n\
 1 NOTE Village school founder.\n\
-0 @I2@ INDI\n1 NAME Elise /Bernard/\n1 SEX F\n1 BIRT\n2 DATE ABT 1925\n\
+0 @I2@ INDI\n1 NAME Odile /Ferrand/\n1 SEX F\n1 BIRT\n2 DATE ABT 1925\n\
 0 @F1@ FAM\n1 HUSB @I1@\n1 WIFE @I2@\n1 MARR\n2 DATE 15 JUN 1948\n\
 0 TRLR\n";
     let env = parse(&convert_gedcom(ged, 0.8, "en").to_json());
@@ -551,7 +551,7 @@ fn test_19_gedcom_conversion() {
         b["places"].as_object().map(|m| m.len()).unwrap_or(0) >= 1,
         "no places");
     let elise = b["persons"].as_object().unwrap().values()
-        .find(|p| p["identity"]["name"]["display"].as_str() == Some("Elise Bernard"));
+        .find(|p| p["identity"]["name"]["display"].as_str() == Some("Odile Ferrand"));
     check("T19 ABT date produces circa=true",
         elise.and_then(|e| e["birth"]["date"]["circa"].as_bool()) == Some(true),
         "circa not set for ABT date");
@@ -630,7 +630,7 @@ fn main() {
     let elise_id = bv05["persons"].as_object().unwrap()
         .iter()
         .find(|(_, v)| v["identity"]["name"]["display"].as_str()
-              == Some("Elise Bernard"))
+              == Some("Odile Ferrand"))
         .map(|(k, _)| k.clone()).unwrap();
     let (b06, family_id) = test_06_add_family(&b05, &jean_id, &elise_id);
     let (b07, _) = test_07_add_event(&b06, &jean_id, &elise_id, &family_id);

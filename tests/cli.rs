@@ -371,7 +371,7 @@ fn convert_gedcom_of_minimal_ged_produces_persons() {
                 2 FORM LINEAGE-LINKED\n\
                 1 CHAR UTF-8\n\
                 0 @I1@ INDI\n\
-                1 NAME Jean /Pierre-Leonard/\n\
+                1 NAME Jean /Lefevre-Morin/\n\
                 1 SEX M\n\
                 0 TRLR\n";
     let (code, stdout, _stderr) = run(&["--json", "convert-gedcom", "-"], ged);
