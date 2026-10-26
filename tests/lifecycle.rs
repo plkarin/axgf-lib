@@ -39,7 +39,7 @@ fn list_zip_names(zip_bytes: &[u8]) -> Vec<String> {
     let cur = std::io::Cursor::new(zip_bytes);
     let mut ar = zip::ZipArchive::new(cur).unwrap();
     (0..ar.len())
-        .map(|i| ar.by_index(i).unwrap().name().to_string())
+        .map(|i| ar.by_index(i).unwrap().name().unwrap().into_owned())
         .collect()
 }
 
@@ -254,8 +254,8 @@ fn import_rejects_unsupported_spec_version() {
     {
         let cursor = std::io::Cursor::new(&mut buf);
         let mut zip = zip::ZipWriter::new(cursor);
-        let opts =
-            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
         zip.start_file("manifest.json", opts).unwrap();
         std::io::Write::write_all(
             &mut zip,

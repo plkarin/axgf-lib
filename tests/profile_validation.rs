@@ -605,11 +605,11 @@ fn an_exported_1_1_bundle_carries_the_1_1_schema_and_a_1_0_bundle_the_1_0_one() 
             .map(|i| {
                 let mut f = ar.by_index(i).unwrap();
                 let mut s = String::new();
-                if f.name().starts_with("schema/") {
+                if f.name().unwrap().starts_with("schema/") {
                     f.read_to_string(&mut s).unwrap();
                     assert!(s.contains("\"$defs\""), "the schema is written whole");
                 }
-                f.name().to_string()
+                f.name().unwrap().into_owned()
             })
             .collect()
     };
@@ -662,8 +662,11 @@ fn a_streaming_export_writes_the_schema_the_manifest_declares() {
     let env = axgf_rs::export_bundle_streaming(&bundle_with(&p).to_string(), &mut out, |_| Ok(()));
     assert_eq!(env.status, Status::Ok, "{:#?}", env.diagnostics);
     let ar = zip::ZipArchive::new(Cursor::new(out.into_inner())).unwrap();
-    let names: Vec<&str> = ar.file_names().collect();
-    assert!(names.contains(&"schema/axgf-1.1.schema.json"), "{names:?}");
+    let names: Vec<String> = ar.file_names().map(|n| n.unwrap().into_owned()).collect();
+    assert!(
+        names.iter().any(|n| n == "schema/axgf-1.1.schema.json"),
+        "{names:?}"
+    );
 }
 
 #[test]

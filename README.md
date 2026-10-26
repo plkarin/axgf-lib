@@ -239,7 +239,7 @@ Deliberately **not** in V1: graph traversal, a query engine, sessions, disk acce
 ## Quick start
 
 Create a bundle, add a person, validate it, write the archive, read it back.
-Compiled and run against `axgf-rs` 0.6.0 from crates.io exactly as printed:
+Compiled and run against `axgf-rs` 0.6.1 from crates.io exactly as printed:
 
 ```rust
 use std::io::Cursor;
@@ -329,7 +329,7 @@ The adapters hold no logic of their own, so finishing one is packaging work, not
 
 The version stays below `1.0.0` because the Rust signatures may still change — 0.4.0 made `Family::union` optional to match the specification, the one change in it that can break a caller. Pin a minor version if that matters to you.
 
-The current release is **0.6.0**, on crates.io: merging two records a person says are one, by plan and decision, with nothing chosen silently and nothing lost (see the [changelog](./CHANGELOG.md)). The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and 1.1.0. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
+The current release is **0.6.1**, on crates.io: a GEDCOM conversion that keeps what the file says, or says what it left out, on top of 0.6.0's merging of two records a person says are one (see the [changelog](./CHANGELOG.md)). The AXGF **format** version is independent of the crate version; this crate targets AXGF 1.0 and 1.1.0. Open questions and planned work are in [Issues](https://github.com/plkarin/axgf-lib/issues).
 
 ---
 
