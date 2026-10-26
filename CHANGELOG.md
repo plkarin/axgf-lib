@@ -5,6 +5,72 @@ All notable changes to `axgf-rs` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] — 2026-10-26
+
+A GEDCOM conversion that keeps what the file says, and an archive reader
+without the advisories of zip 0.6. The 31 defects the CMS's stress campaign
+of 22 October found in the converter are fixed, each held by a test
+(`tests/gedcom_fidelity.rs`); what the converter still cannot carry it now
+says, once per tag. No API change; MSRV unchanged at **1.88.0**.
+
+### Fixed — GEDCOM conversion
+
+- **Dates.**
+  - `ABT` / `CAL` / `EST` keep the date's own precision (`ABT 12 MAR 1850`
+    is about a day, not a year), with `circa`.
+  - `FROM … TO …` is a range, marked a period; `INT` keeps its date and, in
+    `note`, the words it was read from.
+  - A dual year (`12 FEB 1750/51`) is a date: the later year, with a note.
+  - The Julian, French Republican and Hebrew calendars, by their escapes,
+    are read in their calendar (`calendar`, the value in that calendar's
+    reckoning; nothing is converted to Gregorian).
+  - An impossible day (`31 FEB`, `0 JAN`) is not an exact date: the month
+    stands, the day is noted. A year outside 0–9999 has no value: the words
+    are kept in `note`, and the bundle stays valid.
+  - Qualifiers are read word by word: `BRUM` is no longer read as `BR` +
+    `UM` (German *um*, "about").
+- **Names.**
+  - A suffix (`Jean /Dupont/ Jr.`) stays in the display and is no longer
+    made a component the schema refuses; `/Dupont/ Jean` is family-first.
+  - No component keeps a slash, whether one is unclosed or two surnames are
+    written.
+  - A name written as GIVN / SURN / NICK pieces is a name.
+  - Each further NAME is typed by its TYPE: birth, married, alias, …
+  - `SEX X` (GEDCOM 7) is non-binary, with a note.
+- **Events.** Christenings, baptisms, burials, cremations, residences,
+  censuses, emigrations, immigrations, naturalizations, generic `EVEN` with
+  its TYPE and the other person and family events become Events. A burial
+  or a cremation means a death. The cause of death is kept. A divorce or an
+  annulment ends the union. An occupation held `FROM … TO …` has both ends.
+- **Citations.** A citation's page and words are kept (as the evidence of
+  the event that cites them), and QUAY 0–3 gives the confidence.
+- **Families.** A child listed twice is one child; a child or spouse named
+  only by their own FAMC / FAMS belongs to the family; `FAMC.PEDI` gives
+  the child's `lineage` (AXGF 1.1: the family and the manifest declare
+  1.1). A pointer to a record of the wrong kind, or to nothing, links
+  nothing and is reported.
+- **Records.** A cross-reference used twice keeps both records and says so;
+  an INDI with no cross-reference is kept; a note whose text looks like a
+  pointer (`@home@`) is kept as text.
+- **Places.** One town written with other spacing or case is one place; an
+  empty PLAC is no place; `MAP` / `LATI` / `LONG` become coordinates.
+- **Media.** A document attached twice to one person is attached once; a
+  file named by a Windows path is named by its last segment.
+- **Sources.** AUTH, PUBL, TEXT and the repository's name are kept.
+- **Nothing left behind without a word.** Every tag the converter does not
+  carry is reported, once per tag and place (`left out 3 INDI.RESN
+  line(s)`), and lines nested deeper than 64 levels are left out and
+  reported. `RESN` (a restriction notice) is reported rather than read: what
+  it should become in AXGF is the specification's question (axgf-spec #1).
+
+### Changed
+
+- **zip 0.6 → 9.1** (RUSTSEC-2026-0367, -0368, -0369). This library never
+  called the affected `extract`, but no longer depends on a version that
+  has it. Archives written are unchanged in shape.
+- CI on every push and pull request (`ci.yml`: fmt, clippy, tests, MSRV,
+  `cargo audit`); the workflows run on Node 24 actions.
+
 ## [0.6.0] — 2026-10-19
 
 Merging two records a person says are one. Someone always enters the same

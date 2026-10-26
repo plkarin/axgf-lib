@@ -57,7 +57,7 @@ use std::io::{self, Read, Seek, Write};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use serde_json::{json, Value};
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::boundary::envelope::{Diagnostic, DiagnosticCode, Envelope, Severity};
@@ -272,7 +272,15 @@ where
         if entry.is_dir() {
             continue;
         }
-        let name = entry.name().to_string();
+        let name = match entry.name() {
+            Ok(n) => n.into_owned(),
+            Err(e) => {
+                return Envelope::error(
+                    DiagnosticCode::ZipReadError,
+                    format!("cannot read the name of ZIP entry #{i}: {e}"),
+                );
+            }
+        };
 
         if name == "manifest.json" {
             match read_json(&mut entry) {
@@ -450,7 +458,7 @@ where
     }
 
     let mut zip = ZipWriter::new(dest);
-    let opts = FileOptions::default().compression_method(CompressionMethod::Deflated);
+    let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
     macro_rules! zip_err {
@@ -590,7 +598,7 @@ fn write_json_entry<W: Write + Seek>(
     zip: &mut ZipWriter<W>,
     path: &str,
     value: &Value,
-    opts: FileOptions,
+    opts: SimpleFileOptions,
 ) -> Result<(), String> {
     let text = serde_json::to_string_pretty(value).map_err(|e| format!("serialize {path}: {e}"))?;
     start_and_write(zip, path, text.as_bytes(), opts)
@@ -600,7 +608,7 @@ fn start_and_write<W: Write + Seek>(
     zip: &mut ZipWriter<W>,
     path: &str,
     bytes: &[u8],
-    opts: FileOptions,
+    opts: SimpleFileOptions,
 ) -> Result<(), String> {
     zip.start_file(path, opts)
         .map_err(|e| format!("zip start {path}: {e}"))?;

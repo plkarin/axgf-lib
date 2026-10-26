@@ -11,7 +11,7 @@
 use std::io::{Cursor, Write};
 
 use sha2::{Digest, Sha256};
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 /// A tiny xorshift64* PRNG. Payload bytes must be incompressible, or deflate
@@ -78,7 +78,7 @@ pub fn synthetic_axgf(specs: &[Spec], compress: bool) -> (Vec<u8>, Vec<(String, 
         } else {
             CompressionMethod::Stored
         };
-        let opts = FileOptions::default().compression_method(method);
+        let opts = SimpleFileOptions::default().compression_method(method);
 
         let manifest = serde_json::json!({
             "axgf": "1.0",
@@ -193,7 +193,7 @@ pub fn payload_digests(zip_bytes: &[u8]) -> Vec<(String, String)> {
         if f.is_dir() {
             continue;
         }
-        let name = f.name().to_string();
+        let name = f.name().unwrap().into_owned();
         let textual = name == "manifest.json"
             || name == "documents/index.json"
             || name.starts_with("schema/")
@@ -213,7 +213,7 @@ pub fn payload_digests(zip_bytes: &[u8]) -> Vec<(String, String)> {
 pub fn entry_names(zip_bytes: &[u8]) -> Vec<String> {
     let mut ar = zip::ZipArchive::new(Cursor::new(zip_bytes)).expect("valid zip");
     let mut v: Vec<String> = (0..ar.len())
-        .map(|i| ar.by_index(i).unwrap().name().to_string())
+        .map(|i| ar.by_index(i).unwrap().name().unwrap().into_owned())
         .collect();
     v.sort();
     v

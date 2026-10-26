@@ -1,6 +1,6 @@
 [package]
 name = "axgf-rs"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 rust-version = "1.88"
 description = "Reference implementation of the Axiom Genealogy Format (AXGF) 1.0 and 1.1 — a stateless JSON-boundary library for creating, validating, importing, exporting, and converting genealogy bundles, with the 1.1 person profile's vocabularies and registry (GEDCOM 5.5.1 supported)."
@@ -49,7 +49,7 @@ mobile  = ["dep:uniffi"]
 [dependencies]
 serde       = { version = "1.0", features = ["derive"] }
 serde_json  = { version = "1.0", features = ["preserve_order"] }
-zip         = { version = "0.6", default-features = false, features = ["deflate"] }
+zip         = { version = "9.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 jsonschema  = { version = "0.17", default-features = false }
 uuid        = { version = "1.6", features = ["v4", "serde"] }
 thiserror   = "1.0"

@@ -233,11 +233,11 @@ fn streaming_import_rejects_an_unsupported_spec_version() {
         let mut ar = zip::ZipArchive::new(Cursor::new(&zip)).unwrap();
         let cursor = Cursor::new(&mut patched);
         let mut w = zip::ZipWriter::new(cursor);
-        let opts =
-            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
         for i in 0..ar.len() {
             let mut f = ar.by_index(i).unwrap();
-            let name = f.name().to_string();
+            let name = f.name().unwrap().into_owned();
             let mut buf = Vec::new();
             f.read_to_end(&mut buf).unwrap();
             if name == "manifest.json" {

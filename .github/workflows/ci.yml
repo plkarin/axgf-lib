@@ -1,0 +1,49 @@
+name: ci
+
+# Every push and every pull request: the library is formatted, lints clean,
+# passes its tests, still builds on the declared MSRV, and depends on no
+# crate with a known vulnerability. The release workflow gates a tag on the
+# tests again; this one says so before a branch is merged.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: cargo fmt --check
+        run: cargo fmt --check
+      - name: cargo clippy
+        run: cargo clippy --locked --all-targets --features cli -- -D warnings
+      - name: cargo test
+        run: cargo test --locked --features cli
+
+  msrv:
+    name: MSRV 1.88
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: cargo check on the MSRV
+        run: cargo check --locked --all-targets --features cli
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: cargo audit
+        run: cargo audit

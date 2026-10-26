@@ -1700,13 +1700,24 @@ grandmother's notes before the merge is confirmed.*
 ### `convert_gedcom(bytes, default_confidence, place_lang) -> Envelope`
 
 Feature-gated behind `gedcom` (default-on). Converts a GEDCOM 5.5.1 byte
-stream to a flat AXGF bundle. Never fails hard on unknown tags - emits
-`GEDCOM_UNRECOGNIZED_TAG` warnings and drops the offender.
+stream to a flat AXGF bundle. Never fails hard: what it does not carry it
+reports with a `GEDCOM_UNRECOGNIZED_TAG` warning, once per tag and place
+(`left out 2 INDI.RESN line(s): not carried by this converter`), so that
+nothing is dropped without a word.
 
-Handles: encoding auto-detect (UTF-8 BOM / UTF-16 / UTF-8 / latin-1),
-localised date qualifiers in EN/PL/FR/DE, both webtrees `OBJE` layouts,
-partial dates, `NOTE @xref@` resolution, `PEDI adopted`, and per-file xref
-namespace isolation.
+Handles: encoding auto-detect (UTF-8 BOM / UTF-16 / UTF-8 / latin-1); names
+(slashes as GEDCOM writes them, GIVN/SURN pieces, suffixes kept in the
+display, further names typed by TYPE); `SEX` including GEDCOM 7's `X`; every
+person and family event (christening, burial, residence, census, migration,
+`EVEN` + TYPE, divorce, annulment, …) as an Event; the cause of death;
+citations (PAGE, QUAY → confidence); occupations with their period; FAMC /
+FAMS from the person's side and `PEDI` as the child's `lineage`; places
+deduplicated however spaced or cased, with `MAP` coordinates; both webtrees
+`OBJE` layouts, Windows paths; dates with ABT/CAL/EST, BEF/AFT/BET…AND,
+FROM…TO, INT, dual years, the Julian, French Republican and Hebrew
+calendars, impossible days and out-of-range years, qualifiers in
+EN/PL/FR/DE; `NOTE @xref@` resolution; per-file xref namespace isolation.
+A bundle with a child's `lineage` declares AXGF 1.1.
 
 **data on success**: `{ "bundle": <flat> }`.
 

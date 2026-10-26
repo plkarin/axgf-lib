@@ -18,7 +18,7 @@ use base64::Engine as _;
 use serde_json::{json, Value};
 use time::format_description::well_known::Iso8601;
 use time::OffsetDateTime;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::boundary::envelope::{DiagnosticCode, Envelope};
@@ -272,7 +272,15 @@ pub fn import_bundle(zip_bytes: &[u8]) -> Envelope {
         if entry.is_dir() {
             continue;
         }
-        let name = entry.name().to_string();
+        let name = match entry.name() {
+            Ok(n) => n.into_owned(),
+            Err(e) => {
+                return Envelope::error(
+                    DiagnosticCode::ZipReadError,
+                    format!("cannot read the name of ZIP entry #{i}: {e}"),
+                );
+            }
+        };
 
         // manifest.json
         if name == "manifest.json" {
@@ -448,7 +456,7 @@ pub fn export_bundle(flat_json: &str) -> Envelope {
     let mut buf = Vec::with_capacity(16 * 1024);
     let cursor = Cursor::new(&mut buf);
     let mut zip = ZipWriter::new(cursor);
-    let opts = FileOptions::default().compression_method(CompressionMethod::Deflated);
+    let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
     // Helper closure to add a JSON entry.
     let write_json_entry =
@@ -528,10 +536,10 @@ pub fn export_bundle(flat_json: &str) -> Envelope {
         }
     }
 
+    // `finish` takes the writer, and with it the borrow of `buf`.
     if let Err(e) = zip.finish() {
         return Envelope::error(DiagnosticCode::ZipWriteError, format!("zip finish: {e}"));
     }
-    drop(zip);
 
     Envelope::ok(json!({
         "zip_base64": BASE64.encode(&buf),
